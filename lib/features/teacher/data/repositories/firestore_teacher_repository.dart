@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -394,7 +395,7 @@ class FirestoreTeacherRepository implements AbstractTeacherRepository {
       askedCount: picked.askedCount + 1,
       updatedAt: DateTime.now().toUtc().toIso8601String(),
     );
-    await saveQuestion(marked);
+    unawaited(saveQuestion(marked));
     return marked;
   }
 

@@ -9,46 +9,54 @@ import '../theme/app_theme.dart';
 abstract final class HasanahRequestDialog {
   static bool _loadingOpen = false;
   static Timer? _showTimer;
+  static int _token = 0;
 
   static void showLoading(
     BuildContext context, {
     String message = 'جارٍ تنفيذ الطلب...',
   }) {
     if (_loadingOpen || _showTimer != null || !context.mounted) return;
+    final token = ++_token;
     _showTimer = Timer(const Duration(milliseconds: 280), () {
       _showTimer = null;
-      if (!context.mounted || _loadingOpen) return;
+      if (!context.mounted || token != _token || _loadingOpen) return;
       _loadingOpen = true;
       AwesomeDialog(
-      context: context,
-      dialogType: DialogType.noHeader,
-      animType: AnimType.scale,
-      useRootNavigator: true,
-      dismissOnTouchOutside: false,
-      dismissOnBackKeyPress: false,
-      body: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 20),
-        child: Column(
-          children: [
-            const SizedBox(
-              width: 36,
-              height: 36,
-              child: CircularProgressIndicator(strokeWidth: 3),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
-          ],
+        context: context,
+        dialogType: DialogType.noHeader,
+        animType: AnimType.scale,
+        useRootNavigator: true,
+        dismissOnTouchOutside: false,
+        dismissOnBackKeyPress: false,
+        body: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 20),
+          child: Column(
+            children: [
+              const SizedBox(
+                width: 36,
+                height: 36,
+                child: CircularProgressIndicator(strokeWidth: 3),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
         ),
-      ),
-      ).show().whenComplete(() => _loadingOpen = false);
+      ).show().whenComplete(() {
+        if (token == _token) _loadingOpen = false;
+      });
+      if (token != _token) {
+        hide(context);
+      }
     });
   }
 
   static void hide(BuildContext context) {
+    _token++;
     _showTimer?.cancel();
     _showTimer = null;
     if (!_loadingOpen) return;

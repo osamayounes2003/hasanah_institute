@@ -243,6 +243,7 @@ class _WheelTabState extends State<WheelTab> {
       pool: pool,
     );
     if (!context.mounted) return;
+    HasanahRequestDialog.hide(context);
     if (question == null) return;
     await showDialog<void>(
       context: context,

@@ -493,9 +493,6 @@ class CircleSessionCubit extends Cubit<CircleSessionState> {
       );
       return null;
     }
-    emit(
-      state.copyWith(status: CircleSessionUiStatus.loading, clearMessage: true),
-    );
     try {
       final question = await pickRandomQuestionUseCase(
         circleId,
