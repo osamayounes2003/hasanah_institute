@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -153,10 +152,6 @@ class CircleSessionCubit extends Cubit<CircleSessionState> {
         period: state.honorPeriod,
         openSessionId: session?.isOpen == true ? session!.id : null,
       );
-      _syncShownFlags(
-        session?.isOpen == true ? session!.id : null,
-        questions,
-      );
       emit(
         state.copyWith(
           status: CircleSessionUiStatus.success,
@@ -180,30 +175,28 @@ class CircleSessionCubit extends Cubit<CircleSessionState> {
   }
 
   var _reportsDirty = true;
-  final _shownQuestionIds = <String>{};
+  final _shownDailyIdentities = <String>{};
+  final _shownBankIdentities = <String>{};
   final _random = Random();
 
-  void _syncShownFlags(String? sessionId, List<QaQuestion> questions) {
-    _shownQuestionIds.clear();
-    if (sessionId == null || sessionId.isEmpty) return;
-    for (final question in questions) {
-      if (question.wasShownIn(sessionId)) {
-        _shownQuestionIds.add(question.id);
-      }
-    }
+  Set<String> _shownIdentitiesFor(QuestionPool pool) =>
+      pool == QuestionPool.daily ? _shownDailyIdentities : _shownBankIdentities;
+
+  void _clearShownIdentities() {
+    _shownDailyIdentities.clear();
+    _shownBankIdentities.clear();
   }
 
   List<QaQuestion> _unusedWheelQuestions({
     required QuestionPool pool,
     QuestionCategory? category,
-    required String sessionId,
   }) {
+    final shown = _shownIdentitiesFor(pool);
     return [
       for (final question in state.questions)
         if (question.pool == pool &&
             (category == null || question.category == category) &&
-            !_shownQuestionIds.contains(question.id) &&
-            !question.wasShownIn(sessionId))
+            !shown.contains(question.identity))
           question,
     ];
   }
@@ -239,7 +232,7 @@ class CircleSessionCubit extends Cubit<CircleSessionState> {
         circleId: circleId,
         teacherId: teacherId,
       );
-      _shownQuestionIds.clear();
+      _clearShownIdentities();
       final reports = await listSessionReportsUseCase(circleId);
       _reportsDirty = false;
       final honor = await getHonorBoardUseCase(
@@ -526,7 +519,6 @@ class CircleSessionCubit extends Cubit<CircleSessionState> {
     final unused = _unusedWheelQuestions(
       pool: pool,
       category: category,
-      sessionId: session.id,
     );
     if (unused.isEmpty) {
       final hasAny = state.questions.any(
@@ -553,14 +545,8 @@ class CircleSessionCubit extends Cubit<CircleSessionState> {
       );
     }
     final picked = unused[_random.nextInt(unused.length)];
-    _shownQuestionIds.add(picked.id);
-    final marked = picked.copyWith(
-      shownSessionId: session.id,
-      askedCount: picked.askedCount + 1,
-      updatedAt: DateTime.now().toUtc().toIso8601String(),
-    );
-    unawaited(saveQuestionUseCase(marked));
-    return (question: marked, error: null);
+    _shownIdentitiesFor(pool).add(picked.identity);
+    return (question: picked, error: null);
   }
 
   void commitDrawnQuestion(QaQuestion marked) {
@@ -569,21 +555,23 @@ class CircleSessionCubit extends Cubit<CircleSessionState> {
         randomQuestion: marked,
         questions: [
           for (final question in state.questions)
-            if (question.id == marked.id) marked else question,
+            if (question.identity == marked.identity) marked else question,
         ],
       ),
     );
+  }
+
+  bool wasDrawnThisSession(QaQuestion question) {
+    return _shownIdentitiesFor(question.pool).contains(question.identity);
   }
 
   int remainingCount({
     required QuestionPool pool,
     QuestionCategory? category,
   }) {
-    final sessionId = state.session?.id ?? '';
     return _unusedWheelQuestions(
       pool: pool,
       category: category,
-      sessionId: sessionId,
     ).length;
   }
 
@@ -894,6 +882,7 @@ class CircleSessionCubit extends Cubit<CircleSessionState> {
     );
     try {
       final moved = await promoteDailyQuestionsUseCase(circleId);
+      _shownDailyIdentities.clear();
       final questions = await listQuestionsUseCase(circleId);
       emit(
         state.copyWith(

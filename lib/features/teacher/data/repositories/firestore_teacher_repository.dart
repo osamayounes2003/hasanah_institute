@@ -329,7 +329,7 @@ class FirestoreTeacherRepository implements AbstractTeacherRepository {
         .where('circle_id', isEqualTo: circleId)
         .get();
     final questions = snap.docs
-        .map((doc) => _questionFromMap(doc.data()))
+        .map((doc) => _questionFromMap(doc.data(), documentId: doc.id))
         .toList();
     questions.sort((a, b) => b.createdAt.compareTo(a.createdAt));
     _cache.set('questions:$circleId', questions);
@@ -831,9 +831,15 @@ class FirestoreTeacherRepository implements AbstractTeacherRepository {
     );
   }
 
-  QaQuestion _questionFromMap(Map<String, dynamic> row) {
+  QaQuestion _questionFromMap(
+    Map<String, dynamic> row, {
+    String? documentId,
+  }) {
+    final storedId = row['id'] as String? ?? '';
     return QaQuestion(
-      id: row['id'] as String,
+      id: (documentId != null && documentId.isNotEmpty)
+          ? documentId
+          : storedId,
       circleId: row['circle_id'] as String,
       question: row['question'] as String,
       answer: row['answer'] as String,

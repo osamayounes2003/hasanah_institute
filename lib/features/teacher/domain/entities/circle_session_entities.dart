@@ -202,6 +202,9 @@ class QaQuestion {
   bool wasShownIn(String sessionId) =>
       sessionId.isNotEmpty && shownSessionId == sessionId;
 
+  /// Distinguishes questions even when several rows share the same stored id.
+  String get identity => '$id|$createdAt|$question|$answer';
+
   QaQuestion copyWith({
     String? id,
     String? circleId,

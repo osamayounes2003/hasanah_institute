@@ -49,7 +49,7 @@ class _TeacherConsoleState extends State<TeacherConsole>
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 8, vsync: this);
+    _tabs = TabController(length: 9, vsync: this);
     widget.circleSessionCubit.bootstrap(
       circleId: widget.circleId,
       teacherId: widget.teacherId,
@@ -192,7 +192,8 @@ class _TeacherConsoleState extends State<TeacherConsole>
                 Tab(text: 'الطلاب'),
                 Tab(text: 'النقاط'),
                 Tab(text: 'أسئلة'),
-                Tab(text: 'العجلة'),
+                Tab(text: 'سريعة'),
+                Tab(text: 'معرفة'),
                 Tab(text: 'الحضور'),
                 Tab(text: 'إدارة الجلسات'),
                 Tab(text: 'الخطة الشهرية'),
@@ -217,7 +218,11 @@ class _TeacherConsoleState extends State<TeacherConsole>
                 questionController: _questionController,
                 answerController: _answerController,
               ),
-              WheelTab(
+              DailyWheelTab(
+                circleId: widget.circleId,
+                teacherId: widget.teacherId,
+              ),
+              KnowledgeWheelTab(
                 circleId: widget.circleId,
                 teacherId: widget.teacherId,
               ),

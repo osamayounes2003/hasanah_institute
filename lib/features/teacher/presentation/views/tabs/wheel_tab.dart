@@ -16,8 +16,8 @@ const _categoryColors = <QuestionCategory, Color>{
   QuestionCategory.quran: Color(0xFF0369A1),
 };
 
-class WheelTab extends StatefulWidget {
-  const WheelTab({
+class DailyWheelTab extends StatefulWidget {
+  const DailyWheelTab({
     required this.circleId,
     required this.teacherId,
     super.key,
@@ -27,14 +27,13 @@ class WheelTab extends StatefulWidget {
   final String teacherId;
 
   @override
-  State<WheelTab> createState() => _WheelTabState();
+  State<DailyWheelTab> createState() => _DailyWheelTabState();
 }
 
-class _WheelTabState extends State<WheelTab> {
+class _DailyWheelTabState extends State<DailyWheelTab> {
   final _questionController = TextEditingController();
   final _answerController = TextEditingController();
   QuestionCategory _category = QuestionCategory.aqeedah;
-  bool _dailyMode = true;
   QaQuestion? _pending;
 
   @override
@@ -49,23 +48,15 @@ class _WheelTabState extends State<WheelTab> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
       children: [
-        SegmentedButton<bool>(
-          segments: const [
-            ButtonSegment(
-              value: true,
-              label: Text('السريعة'),
-              icon: Icon(Icons.flash_on_outlined, size: 18),
-            ),
-            ButtonSegment(
-              value: false,
-              label: Text('المعرفة'),
-              icon: Icon(Icons.menu_book_outlined, size: 18),
-            ),
-          ],
-          selected: {_dailyMode},
-          onSelectionChanged: (value) {
-            setState(() => _dailyMode = value.first);
-          },
+        Text(
+          'عجلة الأسئلة السريعة',
+          style: Theme.of(context).textTheme.titleLarge,
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'تختار سؤالاً من الأسئلة اليومية فقط. ظهوره هنا لا يخصم من عجلة المعرفة.',
+          textAlign: TextAlign.center,
         ),
         const SizedBox(height: 10),
         BlocBuilder<CircleSessionCubit, CircleSessionState>(
@@ -73,180 +64,119 @@ class _WheelTabState extends State<WheelTab> {
               prev.session?.id != next.session?.id ||
               prev.session?.isOpen != next.session?.isOpen ||
               prev.questions != next.questions,
-          builder: (context, state) => _WheelStatusBar(
-            dailyMode: _dailyMode,
-            state: state,
-          ),
+          builder: (context, state) => _DailyStatusBar(state: state),
         ),
         const SizedBox(height: 8),
-        if (_dailyMode) ...[
-          QuickQuestionsWheel(
-            onBeforeSpin: _drawDaily,
-            onSpinComplete: _revealPending,
-          ),
-          const SizedBox(height: 8),
-          BlocBuilder<CircleSessionCubit, CircleSessionState>(
-            buildWhen: (prev, next) =>
-                prev.status != next.status ||
-                prev.questions != next.questions,
-            builder: (context, state) {
-              final busy = _isSaving(state);
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: busy ? null : () => _resetDailyWheel(context),
-                    icon: const Icon(Icons.restart_alt),
-                    label: const Text('تصفير العجلة ونقل الأسئلة للبنك'),
-                  ),
-                  const SizedBox(height: 4),
-                  ExpansionTile(
-                    tilePadding: EdgeInsets.zero,
-                    title: Text(
-                      'إضافة سؤال يومي',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    children: [
-                      DropdownButtonFormField<QuestionCategory>(
-                        initialValue: _category,
-                        decoration: const InputDecoration(
-                          labelText: 'التصنيف (يُحفظ مع السؤال للبنك)',
-                        ),
-                        items: [
-                          for (final category in QuestionCategory.values)
-                            DropdownMenuItem(
-                              value: category,
-                              child: Text(category.label),
-                            ),
-                        ],
-                        onChanged: (value) {
-                          if (value != null) {
-                            setState(() => _category = value);
-                          }
-                        },
-                      ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: _questionController,
-                        decoration: const InputDecoration(
-                          labelText: 'نص السؤال',
-                        ),
-                        maxLines: 2,
-                      ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: _answerController,
-                        decoration: const InputDecoration(labelText: 'الجواب'),
-                        maxLines: 2,
-                      ),
-                      const SizedBox(height: 12),
-                      FilledButton(
-                        onPressed: busy ? null : () => _addDaily(context),
-                        child: const Text('إضافة إلى العجلة اليومية'),
-                      ),
-                      const SizedBox(height: 8),
-                    ],
-                  ),
-                  Text(
-                    'أسئلة اليوم (${state.dailyQuestions.length})',
+        QuickQuestionsWheel(
+          onBeforeSpin: _draw,
+          onSpinComplete: _reveal,
+        ),
+        const SizedBox(height: 8),
+        BlocBuilder<CircleSessionCubit, CircleSessionState>(
+          buildWhen: (prev, next) =>
+              prev.status != next.status || prev.questions != next.questions,
+          builder: (context, state) {
+            final busy = _isSaving(state);
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: busy ? null : () => _resetDailyWheel(context),
+                  icon: const Icon(Icons.restart_alt),
+                  label: const Text('تصفير العجلة ونقل الأسئلة للبنك'),
+                ),
+                const SizedBox(height: 4),
+                ExpansionTile(
+                  tilePadding: EdgeInsets.zero,
+                  title: Text(
+                    'إضافة سؤال يومي',
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
-                  if (state.dailyQuestions.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.only(top: 8),
-                      child: Text('لا توجد أسئلة يومية بعد.'),
-                    )
-                  else
-                    for (final question in state.dailyQuestions)
-                      _DailyQuestionTile(
-                        question: question,
-                        shown: question.wasShownIn(state.session?.id ?? ''),
-                        busy: busy,
-                        onDelete: () => _deleteDaily(context, question),
+                  children: [
+                    DropdownButtonFormField<QuestionCategory>(
+                      initialValue: _category,
+                      decoration: const InputDecoration(
+                        labelText: 'التصنيف (يُحفظ مع السؤال للبنك)',
                       ),
-                ],
-              );
-            },
-          ),
-        ] else ...[
-          const Text(
-            'تدور العجلة إلى تصنيف فيه سؤال لم يظهر في هذه الجلسة، ثم يُكشف السؤال.',
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 8),
-          IslamicKnowledgeWheel(
-            chooseLanding: _drawBank,
-            onLanded: (_) => _revealPending(),
-          ),
-        ],
+                      items: [
+                        for (final category in QuestionCategory.values)
+                          DropdownMenuItem(
+                            value: category,
+                            child: Text(category.label),
+                          ),
+                      ],
+                      onChanged: (value) {
+                        if (value != null) {
+                          setState(() => _category = value);
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _questionController,
+                      decoration: const InputDecoration(labelText: 'نص السؤال'),
+                      maxLines: 2,
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _answerController,
+                      decoration: const InputDecoration(labelText: 'الجواب'),
+                      maxLines: 2,
+                    ),
+                    const SizedBox(height: 12),
+                    FilledButton(
+                      onPressed: busy ? null : () => _addDaily(context),
+                      child: const Text('إضافة إلى العجلة اليومية'),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                ),
+                Text(
+                  'أسئلة اليوم (${state.dailyQuestions.length})',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                if (state.dailyQuestions.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 8),
+                    child: Text('لا توجد أسئلة يومية بعد.'),
+                  )
+                else
+                  for (final question in state.dailyQuestions)
+                    _DailyQuestionTile(
+                      question: question,
+                      shown: context
+                          .read<CircleSessionCubit>()
+                          .wasDrawnThisSession(question),
+                      busy: busy,
+                      onDelete: () => _deleteDaily(context, question),
+                    ),
+              ],
+            );
+          },
+        ),
       ],
     );
   }
 
-  bool _isSaving(CircleSessionState state) =>
-      state.status == CircleSessionUiStatus.saving ||
-      state.status == CircleSessionUiStatus.loading;
-
-  bool _drawDaily() {
+  bool _draw() {
     final result = context.read<CircleSessionCubit>().drawWheelQuestion(
       pool: QuestionPool.daily,
     );
     if (result.error != null) {
-      _hint(result.error!);
+      _hint(context, result.error!);
       return false;
     }
     _pending = result.question;
     return true;
   }
 
-  QuestionCategory? _drawBank() {
-    final result = context.read<CircleSessionCubit>().drawWheelQuestion(
-      pool: QuestionPool.bank,
-    );
-    if (result.error != null) {
-      _hint(result.error!);
-      return null;
-    }
-    _pending = result.question;
-    return result.question!.category;
-  }
-
-  Future<void> _revealPending() async {
-    final question = _pending;
-    _pending = null;
-    if (question == null || !mounted) return;
-    final cubit = context.read<CircleSessionCubit>();
-    cubit.commitDrawnQuestion(question);
-    await showDialog<void>(
+  Future<void> _reveal() {
+    return _revealDrawnQuestion(
       context: context,
-      barrierDismissible: false,
-      builder: (ctx) => QuestionRevealDialog(
-        category: _dailyMode ? 'سؤال سريع' : question.category.label,
-        question: question,
-        students: cubit.state.students,
-        onAward: (studentId, points) {
-          cubit.awardPointsToStudent(
-            circleId: widget.circleId,
-            studentId: studentId,
-            points: points,
-            reason: PointReason.qa,
-            note: _dailyMode
-                ? 'إجابة عجلة الأسئلة السريعة — ${question.category.label}'
-                : 'إجابة عجلة المعرفة — ${question.category.label}',
-          );
-        },
-      ),
-    );
-  }
-
-  void _hint(String message) {
-    final messenger = ScaffoldMessenger.of(context);
-    messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text(message, textAlign: TextAlign.center),
-        behavior: SnackBarBehavior.floating,
-      ),
+      pending: _pending,
+      onConsumed: () => _pending = null,
+      circleId: widget.circleId,
+      daily: true,
     );
   }
 
@@ -292,43 +222,131 @@ class _WheelTabState extends State<WheelTab> {
   }
 }
 
-class _WheelStatusBar extends StatelessWidget {
-  const _WheelStatusBar({
-    required this.dailyMode,
-    required this.state,
+class KnowledgeWheelTab extends StatefulWidget {
+  const KnowledgeWheelTab({
+    required this.circleId,
+    required this.teacherId,
+    super.key,
   });
 
-  final bool dailyMode;
+  final String circleId;
+  final String teacherId;
+
+  @override
+  State<KnowledgeWheelTab> createState() => _KnowledgeWheelTabState();
+}
+
+class _KnowledgeWheelTabState extends State<KnowledgeWheelTab> {
+  QaQuestion? _pending;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+      children: [
+        Text(
+          'عجلة المعرفة',
+          style: Theme.of(context).textTheme.titleLarge,
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'تختار سؤالاً من البنك العام فقط. ظهوره هنا لا يخصم من العجلة السريعة.',
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 10),
+        BlocBuilder<CircleSessionCubit, CircleSessionState>(
+          buildWhen: (prev, next) =>
+              prev.session?.id != next.session?.id ||
+              prev.session?.isOpen != next.session?.isOpen ||
+              prev.questions != next.questions,
+          builder: (context, state) => _KnowledgeStatusBar(state: state),
+        ),
+        const SizedBox(height: 8),
+        IslamicKnowledgeWheel(
+          chooseLanding: _draw,
+          onLanded: (_) => _reveal(),
+        ),
+      ],
+    );
+  }
+
+  QuestionCategory? _draw() {
+    final result = context.read<CircleSessionCubit>().drawWheelQuestion(
+      pool: QuestionPool.bank,
+    );
+    if (result.error != null) {
+      _hint(context, result.error!);
+      return null;
+    }
+    _pending = result.question;
+    return result.question!.category;
+  }
+
+  Future<void> _reveal() {
+    return _revealDrawnQuestion(
+      context: context,
+      pending: _pending,
+      onConsumed: () => _pending = null,
+      circleId: widget.circleId,
+      daily: false,
+    );
+  }
+}
+
+class _DailyStatusBar extends StatelessWidget {
+  const _DailyStatusBar({required this.state});
+
   final CircleSessionState state;
 
   @override
   Widget build(BuildContext context) {
     final cubit = context.read<CircleSessionCubit>();
-    final sessionOpen = state.session?.isOpen == true;
-    if (dailyMode) {
-      final remaining = cubit.remainingCount(pool: QuestionPool.daily);
-      final total = cubit.totalCount(pool: QuestionPool.daily);
-      return Column(
-        children: [
-          if (!sessionOpen)
-            const _SessionHint(),
-          Chip(
-            avatar: const Icon(Icons.flash_on_outlined, size: 16),
-            label: Text(
-              total == 0
-                  ? 'لا أسئلة يومية بعد'
-                  : remaining == 0
-                  ? 'ظهرت كل الأسئلة السريعة ($total)'
-                  : 'متبقٍ $remaining من $total',
-            ),
-          ),
-        ],
-      );
-    }
-
+    final remaining = cubit.remainingCount(pool: QuestionPool.daily);
+    final total = cubit.totalCount(pool: QuestionPool.daily);
     return Column(
       children: [
-        if (!sessionOpen) const _SessionHint(),
+        if (state.session?.isOpen != true) const _SessionHint(),
+        Chip(
+          avatar: const Icon(Icons.flash_on_outlined, size: 16),
+          label: Text(
+            total == 0
+                ? 'لا أسئلة يومية بعد'
+                : remaining == 0
+                ? 'ظهرت كل الأسئلة السريعة ($total)'
+                : 'متبقٍ $remaining من $total',
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _KnowledgeStatusBar extends StatelessWidget {
+  const _KnowledgeStatusBar({required this.state});
+
+  final CircleSessionState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final cubit = context.read<CircleSessionCubit>();
+    final remaining = cubit.remainingCount(pool: QuestionPool.bank);
+    final total = cubit.totalCount(pool: QuestionPool.bank);
+    return Column(
+      children: [
+        if (state.session?.isOpen != true) const _SessionHint(),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Text(
+            total == 0
+                ? 'لا أسئلة في البنك العام'
+                : remaining == 0
+                ? 'ظهرت كل أسئلة البنك ($total)'
+                : 'متبقٍ في البنك $remaining من $total',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+        ),
         Wrap(
           spacing: 8,
           runSpacing: 8,
@@ -435,4 +453,52 @@ class _DailyQuestionTile extends StatelessWidget {
       ),
     );
   }
+}
+
+bool _isSaving(CircleSessionState state) =>
+    state.status == CircleSessionUiStatus.saving ||
+    state.status == CircleSessionUiStatus.loading;
+
+void _hint(BuildContext context, String message) {
+  final messenger = ScaffoldMessenger.of(context);
+  messenger.hideCurrentSnackBar();
+  messenger.showSnackBar(
+    SnackBar(
+      content: Text(message, textAlign: TextAlign.center),
+      behavior: SnackBarBehavior.floating,
+    ),
+  );
+}
+
+Future<void> _revealDrawnQuestion({
+  required BuildContext context,
+  required QaQuestion? pending,
+  required VoidCallback onConsumed,
+  required String circleId,
+  required bool daily,
+}) async {
+  onConsumed();
+  if (pending == null || !context.mounted) return;
+  final cubit = context.read<CircleSessionCubit>();
+  cubit.commitDrawnQuestion(pending);
+  await showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (ctx) => QuestionRevealDialog(
+      category: daily ? 'سؤال سريع' : pending.category.label,
+      question: pending,
+      students: cubit.state.students,
+      onAward: (studentId, points) {
+        cubit.awardPointsToStudent(
+          circleId: circleId,
+          studentId: studentId,
+          points: points,
+          reason: PointReason.qa,
+          note: daily
+              ? 'إجابة عجلة الأسئلة السريعة — ${pending.category.label}'
+              : 'إجابة عجلة المعرفة — ${pending.category.label}',
+        );
+      },
+    ),
+  );
 }
