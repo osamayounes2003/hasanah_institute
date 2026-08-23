@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../../core/presentation/hasanah_request_dialog.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/syria_time.dart';
 import '../cubit/circle_session_cubit.dart';
@@ -115,12 +116,26 @@ class _TeacherConsoleState extends State<TeacherConsole>
       child: MultiBlocListener(
         listeners: [
           BlocListener<CircleSessionCubit, CircleSessionState>(
+            listenWhen: (prev, next) => prev.status != next.status,
+            listener: (context, state) {
+              if (state.status == CircleSessionUiStatus.loading ||
+                  state.status == CircleSessionUiStatus.saving) {
+                HasanahRequestDialog.showLoading(context);
+              } else {
+                HasanahRequestDialog.hide(context);
+              }
+            },
+          ),
+          BlocListener<CircleSessionCubit, CircleSessionState>(
             listenWhen: (prev, next) =>
                 prev.message != next.message && next.message != null,
-            listener: (context, state) {
-              ScaffoldMessenger.of(context)
-                ..hideCurrentSnackBar()
-                ..showSnackBar(SnackBar(content: Text(state.message!)));
+            listener: (context, state) async {
+              HasanahRequestDialog.hide(context);
+              if (state.status == CircleSessionUiStatus.failure) {
+                await HasanahRequestDialog.error(context, state.message!);
+              } else {
+                await HasanahRequestDialog.success(context, state.message!);
+              }
             },
           ),
           BlocListener<CircleSessionCubit, CircleSessionState>(
@@ -188,12 +203,7 @@ class _TeacherConsoleState extends State<TeacherConsole>
           body: TabBarView(
             controller: _tabs,
             children: [
-              StudentsTab(
-                circleId: widget.circleId,
-                circleName: widget.circleName ?? 'حلقتي',
-                teacherId: widget.teacherId,
-                teacherName: widget.teacherName ?? 'شيخ الحلقة',
-              ),
+              StudentsTab(circleId: widget.circleId),
               PointsTab(
                 circleId: widget.circleId,
                 pointsController: _pointsController,
@@ -207,7 +217,10 @@ class _TeacherConsoleState extends State<TeacherConsole>
                 questionController: _questionController,
                 answerController: _answerController,
               ),
-              WheelTab(circleId: widget.circleId),
+              WheelTab(
+                circleId: widget.circleId,
+                teacherId: widget.teacherId,
+              ),
               AttendanceTab(
                 circleId: widget.circleId,
                 presentIds: _presentIds,

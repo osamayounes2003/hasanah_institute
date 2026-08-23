@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../../../core/presentation/hasanah_request_dialog.dart';
 import '../../../domain/entities/circle_session_entities.dart';
 import '../../cubit/circle_session_cubit.dart';
 
@@ -33,8 +34,12 @@ class _QuestionsBankTabState extends State<QuestionsBankTab> {
           padding: const EdgeInsets.all(16),
           children: [
             Text(
-              'أسئلة وأجوبة',
+              'البنك العام للأسئلة',
               style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'الأسئلة هنا تُعرض في عجلة المعرفة حسب التصنيف. الأسئلة اليومية تُضاف من تبويب العجلة.',
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<QuestionCategory>(
@@ -79,40 +84,34 @@ class _QuestionsBankTabState extends State<QuestionsBankTab> {
               child: const Text('إضافة سؤال'),
             ),
             const SizedBox(height: 20),
-            Text('بنك الأسئلة', style: Theme.of(context).textTheme.titleMedium),
+            Text(
+              'البنك العام (${state.bankQuestions.length})',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
             const SizedBox(height: 8),
-            if (state.questions.isEmpty)
-              const Text('لا توجد أسئلة بعد.')
+            if (state.bankQuestions.isEmpty)
+              const Text('لا توجد أسئلة في البنك العام بعد.')
             else
-              for (final question in state.questions)
+              for (final question in state.bankQuestions)
                 Card(
                   child: ListTile(
                     title: Text(question.question),
                     subtitle: Text(
-                      '${question.category.label}\n${question.answer}',
+                      '${question.category.label}\n'
+                      '${question.answer}\n'
+                      'النقاط: ${question.points} • طُرح: ${question.askedCount} • صحيح: ${question.correctCount}',
                     ),
                     isThreeLine: true,
                     trailing: IconButton(
                       icon: const Icon(Icons.delete_outline),
                       onPressed: () async {
-                        final ok = await showDialog<bool>(
-                          context: context,
-                          builder: (ctx) => AlertDialog(
-                            title: const Text('تأكيد الحذف'),
-                            content: const Text('حذف هذا السؤال؟'),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(ctx, false),
-                                child: const Text('إلغاء'),
-                              ),
-                              FilledButton(
-                                onPressed: () => Navigator.pop(ctx, true),
-                                child: const Text('حذف'),
-                              ),
-                            ],
-                          ),
+                        final ok = await HasanahRequestDialog.confirm(
+                          context,
+                          title: 'تأكيد الحذف',
+                          message: 'حذف هذا السؤال؟',
+                          okText: 'حذف',
                         );
-                        if (ok == true && context.mounted) {
+                        if (ok && context.mounted) {
                           context.read<CircleSessionCubit>().removeQuestion(
                             question.id,
                             widget.circleId,

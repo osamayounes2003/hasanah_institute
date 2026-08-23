@@ -1,23 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../../../core/presentation/hasanah_request_dialog.dart';
 import '../../../../../core/theme/app_theme.dart';
-import '../../../domain/entities/circle_session_entities.dart';
 import '../../cubit/circle_session_cubit.dart';
 
 class StudentsTab extends StatelessWidget {
   const StudentsTab({
     required this.circleId,
-    required this.circleName,
-    required this.teacherId,
-    required this.teacherName,
     super.key,
   });
 
   final String circleId;
-  final String circleName;
-  final String teacherId;
-  final String teacherName;
 
   @override
   Widget build(BuildContext context) {
@@ -27,40 +21,21 @@ class StudentsTab extends StatelessWidget {
             state.students.isEmpty) {
           return const Center(child: CircularProgressIndicator());
         }
-        final pending = state.studentRequests
-            .where((r) => r.status == StudentRequestStatus.pending)
-            .toList();
         return ListView(
           padding: const EdgeInsets.all(16),
           children: [
             Align(
               alignment: AlignmentDirectional.centerStart,
               child: FilledButton.icon(
-                onPressed: () => _requestStudent(context),
+                onPressed: () => _addStudent(context),
                 icon: const Icon(Icons.person_add_alt_1),
-                label: const Text('طلب إضافة طالب'),
+                label: const Text('إضافة طالب'),
               ),
             ),
             const SizedBox(height: 8),
             const Text(
-              'يُرسل الطلب للمدير، ولا يُضاف الطالب إلا بعد الموافقة.',
+              'يُضاف الطالب إلى الحلقة مباشرة دون الحاجة إلى موافقة المدير.',
             ),
-            if (pending.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Text(
-                'طلبات بانتظار الموافقة',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              for (final req in pending)
-                Card(
-                  color: const Color(0xFFFFF8E1),
-                  child: ListTile(
-                    title: Text(req.studentName),
-                    subtitle: const Text('بانتظار موافقة المدير'),
-                    leading: const Icon(Icons.hourglass_top),
-                  ),
-                ),
-            ],
             const SizedBox(height: 12),
             Text(
               'طلاب الحلقة',
@@ -98,24 +73,13 @@ class StudentsTab extends StatelessWidget {
                       tooltip: 'إزالة من الحلقة',
                       icon: const Icon(Icons.person_remove_outlined),
                       onPressed: () async {
-                        final ok = await showDialog<bool>(
-                          context: context,
-                          builder: (ctx) => AlertDialog(
-                            title: const Text('تأكيد'),
-                            content: Text('إزالة ${student.name} من الحلقة؟'),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(ctx, false),
-                                child: const Text('إلغاء'),
-                              ),
-                              FilledButton(
-                                onPressed: () => Navigator.pop(ctx, true),
-                                child: const Text('إزالة'),
-                              ),
-                            ],
-                          ),
+                        final ok = await HasanahRequestDialog.confirm(
+                          context,
+                          title: 'تأكيد',
+                          message: 'إزالة ${student.name} من الحلقة؟',
+                          okText: 'إزالة',
                         );
-                        if (ok == true && context.mounted) {
+                        if (ok && context.mounted) {
                           context
                               .read<CircleSessionCubit>()
                               .removeStudentFromCircle(
@@ -133,12 +97,12 @@ class StudentsTab extends StatelessWidget {
     );
   }
 
-  Future<void> _requestStudent(BuildContext context) async {
+  Future<void> _addStudent(BuildContext context) async {
     final name = TextEditingController();
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('طلب إضافة طالب'),
+        title: const Text('إضافة طالب'),
         content: TextField(
           controller: name,
           decoration: const InputDecoration(labelText: 'الاسم الثلاثي'),
@@ -150,17 +114,14 @@ class StudentsTab extends StatelessWidget {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('إرسال للمدير'),
+            child: const Text('إضافة'),
           ),
         ],
       ),
     );
     if (ok != true || !context.mounted) return;
-    await context.read<CircleSessionCubit>().requestAddStudent(
+    await context.read<CircleSessionCubit>().addStudentDirectly(
       circleId: circleId,
-      circleName: circleName,
-      teacherId: teacherId,
-      teacherName: teacherName,
       studentName: name.text,
     );
   }

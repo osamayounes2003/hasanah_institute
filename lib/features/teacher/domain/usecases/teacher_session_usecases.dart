@@ -103,8 +103,39 @@ class PickRandomQuestionUseCase {
   Future<QaQuestion?> call(
     String circleId, {
     QuestionCategory? category,
+    QuestionPool pool = QuestionPool.bank,
   }) {
-    return _repository.pickRandomQuestion(circleId, category: category);
+    return _repository.pickRandomQuestion(
+      circleId,
+      category: category,
+      pool: pool,
+    );
+  }
+}
+
+class PromoteDailyQuestionsUseCase {
+  const PromoteDailyQuestionsUseCase(this._repository);
+
+  final AbstractTeacherRepository _repository;
+
+  Future<int> call(String circleId) {
+    return _repository.promoteDailyQuestionsToBank(circleId);
+  }
+}
+
+class AddStudentToCircleUseCase {
+  const AddStudentToCircleUseCase(this._repository);
+
+  final AbstractTeacherRepository _repository;
+
+  Future<InstituteUser> call({
+    required String circleId,
+    required String studentName,
+  }) {
+    return _repository.addStudentToCircle(
+      circleId: circleId,
+      studentName: studentName,
+    );
   }
 }
 

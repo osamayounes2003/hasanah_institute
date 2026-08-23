@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../../../core/presentation/hasanah_request_dialog.dart';
 import '../../../shared/domain/entities/institute_entities.dart';
 import '../cubit/admin_cubit.dart';
 import '../services/admin_export_service.dart';
@@ -52,13 +53,30 @@ class _AdminDashboardState extends State<AdminDashboard>
   Widget build(BuildContext context) {
     return BlocProvider.value(
       value: widget.adminCubit,
-      child: BlocListener<AdminCubit, AdminState>(
-        listenWhen: (p, n) => p.message != n.message && n.message != null,
-        listener: (context, state) {
-          ScaffoldMessenger.of(context)
-            ..hideCurrentSnackBar()
-            ..showSnackBar(SnackBar(content: Text(state.message!)));
-        },
+      child: MultiBlocListener(
+        listeners: [
+          BlocListener<AdminCubit, AdminState>(
+            listenWhen: (p, n) => p.status != n.status,
+            listener: (context, state) {
+              if (state.status == AdminStatus.loading) {
+                HasanahRequestDialog.showLoading(context);
+              } else {
+                HasanahRequestDialog.hide(context);
+              }
+            },
+          ),
+          BlocListener<AdminCubit, AdminState>(
+            listenWhen: (p, n) => p.message != n.message && n.message != null,
+            listener: (context, state) async {
+              HasanahRequestDialog.hide(context);
+              if (state.status == AdminStatus.failure) {
+                await HasanahRequestDialog.error(context, state.message!);
+              } else {
+                await HasanahRequestDialog.success(context, state.message!);
+              }
+            },
+          ),
+        ],
         child: Scaffold(
           appBar: AppBar(
             title: const Text('لوحة المدير'),
@@ -269,18 +287,36 @@ class _AdminDashboardState extends State<AdminDashboard>
   }
 
   Future<void> _exportExcel() async {
-    final rows = widget.adminCubit.state.stats;
-    final bytes = _export.exportStudentsExcel(rows);
-    final dir = await getTemporaryDirectory();
-    final file = File('${dir.path}/hasanah_stats.xlsx');
-    await file.writeAsBytes(bytes, flush: true);
-    await SharePlus.instance.share(
-      ShareParams(files: [XFile(file.path)]),
-    );
+    HasanahRequestDialog.showLoading(context, message: 'جارٍ تجهيز ملف Excel...');
+    try {
+      final rows = widget.adminCubit.state.stats;
+      final bytes = _export.exportStudentsExcel(rows);
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/hasanah_stats.xlsx');
+      await file.writeAsBytes(bytes, flush: true);
+      if (!mounted) return;
+      HasanahRequestDialog.hide(context);
+      await SharePlus.instance.share(
+        ShareParams(files: [XFile(file.path)]),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      HasanahRequestDialog.hide(context);
+      await HasanahRequestDialog.error(context, 'تعذر تصدير ملف Excel.');
+    }
   }
 
   Future<void> _exportPdf() async {
-    final bytes = await _export.exportStatsPdf(widget.adminCubit.state.stats);
-    await Printing.layoutPdf(onLayout: (_) async => bytes);
+    HasanahRequestDialog.showLoading(context, message: 'جارٍ تجهيز ملف PDF...');
+    try {
+      final bytes = await _export.exportStatsPdf(widget.adminCubit.state.stats);
+      if (!mounted) return;
+      HasanahRequestDialog.hide(context);
+      await Printing.layoutPdf(onLayout: (_) async => bytes);
+    } catch (_) {
+      if (!mounted) return;
+      HasanahRequestDialog.hide(context);
+      await HasanahRequestDialog.error(context, 'تعذر تصدير ملف PDF.');
+    }
   }
 }

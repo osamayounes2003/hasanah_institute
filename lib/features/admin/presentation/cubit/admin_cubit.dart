@@ -104,115 +104,126 @@ class AdminCubit extends Cubit<AdminState> {
     }
   }
 
-  Future<void> saveStudent(InstituteUser student) async {
-    try {
-      await saveStudentUseCase(student);
-      await loadAll();
-      emit(state.copyWith(message: 'تم حفظ الطالب.'));
-    } catch (_) {
-      emit(state.copyWith(message: 'تعذر حفظ الطالب.'));
-    }
+  Future<void> saveStudent(InstituteUser student) {
+    return _mutate(
+      action: () => saveStudentUseCase(student),
+      successMessage: 'تم حفظ الطالب.',
+      failureMessage: 'تعذر حفظ الطالب.',
+    );
   }
 
-  Future<void> deleteStudent(String id) async {
-    try {
-      await deleteStudentUseCase(id);
-      await loadAll();
-      emit(state.copyWith(message: 'تم حذف الطالب.'));
-    } catch (_) {
-      emit(state.copyWith(message: 'تعذر حذف الطالب.'));
-    }
+  Future<void> deleteStudent(String id) {
+    return _mutate(
+      action: () => deleteStudentUseCase(id),
+      successMessage: 'تم حذف الطالب.',
+      failureMessage: 'تعذر حذف الطالب.',
+    );
   }
 
-  Future<void> saveTeacher(InstituteUser teacher) async {
-    try {
-      await saveTeacherUseCase(teacher);
-      await loadAll();
-      emit(state.copyWith(message: 'تم حفظ الشيخ.'));
-    } catch (_) {
-      emit(state.copyWith(message: 'تعذر حفظ الشيخ.'));
-    }
+  Future<void> saveTeacher(InstituteUser teacher) {
+    return _mutate(
+      action: () => saveTeacherUseCase(teacher),
+      successMessage: 'تم حفظ الشيخ.',
+      failureMessage: 'تعذر حفظ الشيخ.',
+    );
   }
 
-  Future<void> deleteTeacher(String id) async {
-    try {
-      await deleteTeacherUseCase(id);
-      await loadAll();
-      emit(state.copyWith(message: 'تم حذف الشيخ.'));
-    } catch (_) {
-      emit(state.copyWith(message: 'تعذر حذف الشيخ.'));
-    }
+  Future<void> deleteTeacher(String id) {
+    return _mutate(
+      action: () => deleteTeacherUseCase(id),
+      successMessage: 'تم حذف الشيخ.',
+      failureMessage: 'تعذر حذف الشيخ.',
+    );
   }
 
-  Future<void> saveCircle(Circle circle) async {
-    try {
-      await saveCircleUseCase(circle);
-      await loadAll();
-      emit(state.copyWith(message: 'تم حفظ الحلقة.'));
-    } catch (_) {
-      emit(state.copyWith(message: 'تعذر حفظ الحلقة.'));
-    }
+  Future<void> saveCircle(Circle circle) {
+    return _mutate(
+      action: () => saveCircleUseCase(circle),
+      successMessage: 'تم حفظ الحلقة.',
+      failureMessage: 'تعذر حفظ الحلقة.',
+    );
   }
 
-  Future<void> deleteCircle(String id) async {
-    try {
-      await deleteCircleUseCase(id);
-      await loadAll();
-      emit(state.copyWith(message: 'تم حذف الحلقة.'));
-    } catch (_) {
-      emit(state.copyWith(message: 'تعذر حذف الحلقة.'));
-    }
+  Future<void> deleteCircle(String id) {
+    return _mutate(
+      action: () => deleteCircleUseCase(id),
+      successMessage: 'تم حذف الحلقة.',
+      failureMessage: 'تعذر حذف الحلقة.',
+    );
   }
 
   Future<void> assignStudent({
     required String circleId,
     required String studentId,
-  }) async {
-    try {
-      await assignStudentToCircleUseCase(
+  }) {
+    return _mutate(
+      action: () => assignStudentToCircleUseCase(
         circleId: circleId,
         studentId: studentId,
-      );
-      await loadAll();
-      emit(state.copyWith(message: 'تم إسناد الطالب للحلقة.'));
-    } catch (_) {
-      emit(state.copyWith(message: 'تعذر إسناد الطالب.'));
-    }
+      ),
+      successMessage: 'تم إسناد الطالب للحلقة.',
+      failureMessage: 'تعذر إسناد الطالب.',
+    );
   }
 
   Future<void> removeStudentFromCircle({
     required String circleId,
     required String studentId,
-  }) async {
-    try {
-      await removeStudentFromCircleUseCase(
+  }) {
+    return _mutate(
+      action: () => removeStudentFromCircleUseCase(
         circleId: circleId,
         studentId: studentId,
+      ),
+      successMessage: 'تم إزالة الطالب من الحلقة.',
+      failureMessage: 'تعذر إزالة الطالب.',
+    );
+  }
+
+  Future<void> approveStudentRequest(String requestId) {
+    return _mutate(
+      action: () => approveStudentRequestUseCase(requestId),
+      successMessage: 'تمت الموافقة وإضافة الطالب للحلقة.',
+      failureMessage: 'تعذر الموافقة على الطلب.',
+    );
+  }
+
+  Future<void> rejectStudentRequest(String requestId) {
+    return _mutate(
+      action: () => rejectStudentRequestUseCase(requestId),
+      successMessage: 'تم رفض الطلب.',
+      failureMessage: 'تعذر رفض الطلب.',
+    );
+  }
+
+  Future<void> _mutate({
+    required Future<void> Function() action,
+    required String successMessage,
+    required String failureMessage,
+  }) async {
+    emit(state.copyWith(status: AdminStatus.loading, clearMessage: true));
+    try {
+      await action();
+      final data = await loadAdminDashboardUseCase();
+      emit(
+        state.copyWith(
+          status: AdminStatus.success,
+          students: data.students,
+          teachers: data.teachers,
+          circles: data.circles,
+          circleMembers: data.circleMembers,
+          pendingRequests: data.pendingRequests,
+          stats: data.stats,
+          message: successMessage,
+        ),
       );
-      await loadAll();
-      emit(state.copyWith(message: 'تم إزالة الطالب من الحلقة.'));
     } catch (_) {
-      emit(state.copyWith(message: 'تعذر إزالة الطالب.'));
-    }
-  }
-
-  Future<void> approveStudentRequest(String requestId) async {
-    try {
-      await approveStudentRequestUseCase(requestId);
-      await loadAll();
-      emit(state.copyWith(message: 'تمت الموافقة وإضافة الطالب للحلقة.'));
-    } catch (_) {
-      emit(state.copyWith(message: 'تعذر الموافقة على الطلب.'));
-    }
-  }
-
-  Future<void> rejectStudentRequest(String requestId) async {
-    try {
-      await rejectStudentRequestUseCase(requestId);
-      await loadAll();
-      emit(state.copyWith(message: 'تم رفض الطلب.'));
-    } catch (_) {
-      emit(state.copyWith(message: 'تعذر رفض الطلب.'));
+      emit(
+        state.copyWith(
+          status: AdminStatus.failure,
+          message: failureMessage,
+        ),
+      );
     }
   }
 }

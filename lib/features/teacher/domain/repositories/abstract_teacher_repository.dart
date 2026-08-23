@@ -49,6 +49,14 @@ abstract interface class AbstractTeacherRepository {
   Future<QaQuestion?> pickRandomQuestion(
     String circleId, {
     QuestionCategory? category,
+    QuestionPool pool = QuestionPool.bank,
+  });
+
+  Future<int> promoteDailyQuestionsToBank(String circleId);
+
+  Future<InstituteUser> addStudentToCircle({
+    required String circleId,
+    required String studentName,
   });
 
   Future<List<HonorEntry>> getHonorBoard({

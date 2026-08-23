@@ -335,6 +335,10 @@ class FirestoreTeacherRepository implements AbstractTeacherRepository {
           'answer': question.answer,
           'category': question.category.name,
           'category_label': question.category.label,
+          'pool': question.pool.name,
+          'asked_count': question.askedCount,
+          'correct_count': question.correctCount,
+          'points': question.points,
           'created_by': question.createdBy,
           'created_at': question.createdAt,
           'updated_at': question.updatedAt,
@@ -353,13 +357,82 @@ class FirestoreTeacherRepository implements AbstractTeacherRepository {
   Future<QaQuestion?> pickRandomQuestion(
     String circleId, {
     QuestionCategory? category,
+    QuestionPool pool = QuestionPool.bank,
   }) async {
     final questions = await listQuestions(circleId);
-    final pool = category == null
-        ? questions
-        : questions.where((q) => q.category == category).toList();
-    if (pool.isEmpty) return null;
-    return pool[Random().nextInt(pool.length)];
+    final filtered = questions.where((q) {
+      if (q.pool != pool) return false;
+      if (category != null && q.category != category) return false;
+      return true;
+    }).toList();
+    if (filtered.isEmpty) return null;
+    return filtered[Random().nextInt(filtered.length)];
+  }
+
+  @override
+  Future<int> promoteDailyQuestionsToBank(String circleId) async {
+    final daily = (await listQuestions(circleId))
+        .where((q) => q.pool == QuestionPool.daily)
+        .toList();
+    if (daily.isEmpty) return 0;
+    final now = DateTime.now().toUtc().toIso8601String();
+    final batch = _firestore.batch();
+    for (final question in daily) {
+      batch.set(
+        _firestore.collection(FirestorePaths.qaQuestions).doc(question.id),
+        {
+          'pool': QuestionPool.bank.name,
+          'asked_count': 0,
+          'correct_count': 0,
+          'points': 0,
+          'category': question.category.name,
+          'category_label': question.category.label,
+          'updated_at': now,
+        },
+        SetOptions(merge: true),
+      );
+    }
+    await batch.commit();
+    return daily.length;
+  }
+
+  @override
+  Future<InstituteUser> addStudentToCircle({
+    required String circleId,
+    required String studentName,
+  }) async {
+    final now = DateTime.now().toUtc();
+    final studentId = 'student-${now.millisecondsSinceEpoch}';
+    final createdAt = now.toIso8601String();
+    final batch = _firestore.batch();
+    batch.set(_firestore.collection(FirestorePaths.users).doc(studentId), {
+      'id': studentId,
+      'name': studentName.trim(),
+      'role': UserRole.student.name,
+      'password': null,
+      'created_at': createdAt,
+      'updated_at': createdAt,
+      'total_points': 0,
+    });
+    batch.set(
+      _firestore
+          .collection(FirestorePaths.circleStudents)
+          .doc('${circleId}_$studentId'),
+      {
+        'circle_id': circleId,
+        'student_id': studentId,
+        'created_at': createdAt,
+      },
+    );
+    await batch.commit();
+    return InstituteUser(
+      id: studentId,
+      name: studentName.trim(),
+      role: UserRole.student,
+      createdAt: now,
+      updatedAt: now,
+      totalPoints: 0,
+    );
   }
 
   @override
@@ -640,6 +713,10 @@ class FirestoreTeacherRepository implements AbstractTeacherRepository {
       category: QuestionCategory.fromStorage(
         (row['category'] as String?) ?? (row['category_label'] as String?),
       ),
+      pool: QuestionPool.fromStorage(row['pool'] as String?),
+      askedCount: (row['asked_count'] as num?)?.toInt() ?? 0,
+      correctCount: (row['correct_count'] as num?)?.toInt() ?? 0,
+      points: (row['points'] as num?)?.toInt() ?? 0,
       createdBy: row['created_by'] as String,
       createdAt: row['created_at'] as String,
       updatedAt: row['updated_at'] as String,

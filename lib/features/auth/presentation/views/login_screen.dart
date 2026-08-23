@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/presentation/hasanah_request_dialog.dart';
 import '../cubit/session_cubit.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -128,13 +129,21 @@ class _LoginScreenState extends State<LoginScreen> {
       _isSubmitting = true;
       _errorMessage = null;
     });
+    HasanahRequestDialog.showLoading(context, message: 'جارٍ تسجيل الدخول...');
     try {
       await widget.sessionCubit.signIn(password: _passwordController.text);
+      if (mounted) HasanahRequestDialog.hide(context);
     } on StateError catch (error) {
-      if (mounted) setState(() => _errorMessage = error.message.toString());
+      if (mounted) {
+        HasanahRequestDialog.hide(context);
+        setState(() => _errorMessage = error.message.toString());
+        await HasanahRequestDialog.error(context, error.message.toString());
+      }
     } catch (_) {
       if (mounted) {
+        HasanahRequestDialog.hide(context);
         setState(() => _errorMessage = 'تعذر تسجيل الدخول.');
+        await HasanahRequestDialog.error(context, 'تعذر تسجيل الدخول.');
       }
     } finally {
       if (mounted) setState(() => _isSubmitting = false);

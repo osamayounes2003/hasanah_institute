@@ -37,6 +37,12 @@ class CircleSessionState {
   final QaQuestion? randomQuestion;
   final String? message;
 
+  List<QaQuestion> get bankQuestions =>
+      questions.where((q) => q.pool == QuestionPool.bank).toList();
+
+  List<QaQuestion> get dailyQuestions =>
+      questions.where((q) => q.pool == QuestionPool.daily).toList();
+
   CircleSessionState copyWith({
     CircleSessionUiStatus? status,
     List<InstituteUser>? students,
@@ -93,8 +99,8 @@ class CircleSessionCubit extends Cubit<CircleSessionState> {
     required this.removeStudentFromCircleUseCase,
     required this.listSessionReportsUseCase,
     required this.updateSessionDetailsUseCase,
-    required this.submitStudentRequestUseCase,
-    required this.listMyStudentRequestsUseCase,
+    required this.addStudentToCircleUseCase,
+    required this.promoteDailyQuestionsUseCase,
   }) : super(const CircleSessionState());
 
   final LoadCircleStudentsUseCase loadCircleStudentsUseCase;
@@ -115,8 +121,8 @@ class CircleSessionCubit extends Cubit<CircleSessionState> {
   final RemoveStudentFromCircleUseCase removeStudentFromCircleUseCase;
   final ListSessionReportsUseCase listSessionReportsUseCase;
   final UpdateSessionDetailsUseCase updateSessionDetailsUseCase;
-  final SubmitStudentRequestUseCase submitStudentRequestUseCase;
-  final ListMyStudentRequestsUseCase listMyStudentRequestsUseCase;
+  final AddStudentToCircleUseCase addStudentToCircleUseCase;
+  final PromoteDailyQuestionsUseCase promoteDailyQuestionsUseCase;
 
   /// Loads circle data. Does NOT auto-start a session — teacher starts manually.
   Future<void> bootstrap({
@@ -133,10 +139,6 @@ class CircleSessionCubit extends Cubit<CircleSessionState> {
       final plans = await listMonthlyPlansUseCase(circleId);
       final points = await studentPointsMapUseCase(circleId);
       final reports = await listSessionReportsUseCase(circleId);
-      final requests = await listMyStudentRequestsUseCase(
-        circleId: circleId,
-        teacherId: teacherId,
-      );
       final honor = await getHonorBoardUseCase(
         circleId: circleId,
         period: state.honorPeriod,
@@ -152,7 +154,6 @@ class CircleSessionCubit extends Cubit<CircleSessionState> {
           questions: questions,
           monthlyPlans: plans,
           sessionReports: reports,
-          studentRequests: requests,
           honorBoard: honor,
         ),
       );
@@ -386,6 +387,7 @@ class CircleSessionCubit extends Cubit<CircleSessionState> {
     required String question,
     required String answer,
     required QuestionCategory category,
+    QuestionPool pool = QuestionPool.bank,
   }) async {
     if (question.trim().isEmpty || answer.trim().isEmpty) {
       emit(
@@ -408,6 +410,10 @@ class CircleSessionCubit extends Cubit<CircleSessionState> {
           question: question.trim(),
           answer: answer.trim(),
           category: category,
+          pool: pool,
+          askedCount: 0,
+          correctCount: 0,
+          points: 0,
           createdBy: teacherId,
           createdAt: now,
           updatedAt: now,
@@ -418,7 +424,9 @@ class CircleSessionCubit extends Cubit<CircleSessionState> {
         state.copyWith(
           status: CircleSessionUiStatus.success,
           questions: questions,
-          message: 'تمت إضافة السؤال.',
+          message: pool == QuestionPool.daily
+              ? 'تمت إضافة السؤال إلى العجلة اليومية.'
+              : 'تمت إضافة السؤال إلى البنك العام.',
         ),
       );
     } catch (_) {
@@ -432,6 +440,9 @@ class CircleSessionCubit extends Cubit<CircleSessionState> {
   }
 
   Future<void> removeQuestion(String questionId, String circleId) async {
+    emit(
+      state.copyWith(status: CircleSessionUiStatus.saving, clearMessage: true),
+    );
     try {
       await deleteQuestionUseCase(questionId);
       final questions = await listQuestionsUseCase(circleId);
@@ -454,7 +465,8 @@ class CircleSessionCubit extends Cubit<CircleSessionState> {
 
   Future<QaQuestion?> spinQuestionWheel(
     String circleId, {
-    required QuestionCategory category,
+    QuestionCategory? category,
+    QuestionPool pool = QuestionPool.bank,
   }) async {
     emit(
       state.copyWith(status: CircleSessionUiStatus.loading, clearMessage: true),
@@ -463,12 +475,18 @@ class CircleSessionCubit extends Cubit<CircleSessionState> {
       final question = await pickRandomQuestionUseCase(
         circleId,
         category: category,
+        pool: pool,
       );
       if (question == null) {
+        final emptyMessage = pool == QuestionPool.daily
+            ? 'لا توجد أسئلة يومية. أضف أسئلة للعجلة السريعة أولاً.'
+            : category == null
+            ? 'لا توجد أسئلة في البنك العام.'
+            : 'لا توجد أسئلة في تصنيف «${category.label}».';
         emit(
           state.copyWith(
             status: CircleSessionUiStatus.failure,
-            message: 'لا توجد أسئلة في تصنيف «${category.label}».',
+            message: emptyMessage,
             clearRandomQuestion: true,
           ),
         );
@@ -573,6 +591,9 @@ class CircleSessionCubit extends Cubit<CircleSessionState> {
   }
 
   Future<void> deleteMonthlyPlan(String planId, String circleId) async {
+    emit(
+      state.copyWith(status: CircleSessionUiStatus.saving, clearMessage: true),
+    );
     try {
       await deleteMonthlyPlanUseCase(planId);
       final plans = await listMonthlyPlansUseCase(circleId);
@@ -597,6 +618,9 @@ class CircleSessionCubit extends Cubit<CircleSessionState> {
     required String circleId,
     required String studentId,
   }) async {
+    emit(
+      state.copyWith(status: CircleSessionUiStatus.saving, clearMessage: true),
+    );
     try {
       await removeStudentFromCircleUseCase(
         circleId: circleId,
@@ -728,11 +752,8 @@ class CircleSessionCubit extends Cubit<CircleSessionState> {
     }
   }
 
-  Future<void> requestAddStudent({
+  Future<void> addStudentDirectly({
     required String circleId,
-    required String circleName,
-    required String teacherId,
-    required String teacherName,
     required String studentName,
   }) async {
     if (studentName.trim().isEmpty) {
@@ -748,36 +769,51 @@ class CircleSessionCubit extends Cubit<CircleSessionState> {
       state.copyWith(status: CircleSessionUiStatus.saving, clearMessage: true),
     );
     try {
-      final now = DateTime.now().toUtc().toIso8601String();
-      await submitStudentRequestUseCase(
-        StudentJoinRequest(
-          id: 'req_${DateTime.now().millisecondsSinceEpoch}',
-          studentName: studentName.trim(),
-          circleId: circleId,
-          circleName: circleName,
-          teacherId: teacherId,
-          teacherName: teacherName,
-          status: StudentRequestStatus.pending,
-          createdAt: now,
-          updatedAt: now,
-        ),
-      );
-      final requests = await listMyStudentRequestsUseCase(
+      await addStudentToCircleUseCase(
         circleId: circleId,
-        teacherId: teacherId,
+        studentName: studentName.trim(),
       );
+      final students = await loadCircleStudentsUseCase(circleId);
+      final points = await studentPointsMapUseCase(circleId);
       emit(
         state.copyWith(
           status: CircleSessionUiStatus.success,
-          studentRequests: requests,
-          message: 'تم إرسال طلب إضافة الطالب وسينتظر موافقة المدير.',
+          students: students,
+          studentPoints: points,
+          message: 'تمت إضافة الطالب إلى الحلقة مباشرة.',
         ),
       );
     } catch (_) {
       emit(
         state.copyWith(
           status: CircleSessionUiStatus.failure,
-          message: 'تعذر إرسال طلب إضافة الطالب.',
+          message: 'تعذر إضافة الطالب.',
+        ),
+      );
+    }
+  }
+
+  Future<void> resetDailyWheel(String circleId) async {
+    emit(
+      state.copyWith(status: CircleSessionUiStatus.saving, clearMessage: true),
+    );
+    try {
+      final moved = await promoteDailyQuestionsUseCase(circleId);
+      final questions = await listQuestionsUseCase(circleId);
+      emit(
+        state.copyWith(
+          status: CircleSessionUiStatus.success,
+          questions: questions,
+          message: moved == 0
+              ? 'لا توجد أسئلة يومية للتصفير.'
+              : 'تم تصفير العجلة اليومية ونقل $moved سؤالاً إلى البنك العام بالنقاط 0.',
+        ),
+      );
+    } catch (_) {
+      emit(
+        state.copyWith(
+          status: CircleSessionUiStatus.failure,
+          message: 'تعذر تصفير العجلة اليومية.',
         ),
       );
     }

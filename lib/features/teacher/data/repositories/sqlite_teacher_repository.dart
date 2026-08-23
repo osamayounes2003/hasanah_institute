@@ -71,6 +71,24 @@ class SqliteTeacherRepository implements AbstractTeacherRepository {
       const [];
 
   @override
+  Future<int> promoteDailyQuestionsToBank(String circleId) async => 0;
+
+  @override
+  Future<InstituteUser> addStudentToCircle({
+    required String circleId,
+    required String studentName,
+  }) async {
+    final now = DateTime.now().toUtc();
+    return InstituteUser(
+      id: 'student-${now.millisecondsSinceEpoch}',
+      name: studentName.trim(),
+      role: UserRole.student,
+      createdAt: now,
+      updatedAt: now,
+    );
+  }
+
+  @override
   Future<List<InstituteUser>> fetchCircleStudents(String circleId) async {
     final rows = await _localDataSource.circleStudents(circleId);
     return rows.map(_userFromRow).toList();
@@ -215,6 +233,10 @@ class SqliteTeacherRepository implements AbstractTeacherRepository {
       'question': question.question,
       'answer': question.answer,
       'category': question.category.name,
+      'pool': question.pool.name,
+      'asked_count': question.askedCount,
+      'correct_count': question.correctCount,
+      'points': question.points,
       'created_by': question.createdBy,
       'created_at': question.createdAt,
       'updated_at': question.updatedAt,
@@ -230,13 +252,16 @@ class SqliteTeacherRepository implements AbstractTeacherRepository {
   Future<QaQuestion?> pickRandomQuestion(
     String circleId, {
     QuestionCategory? category,
+    QuestionPool pool = QuestionPool.bank,
   }) async {
     final questions = await listQuestions(circleId);
-    final pool = category == null
-        ? questions
-        : questions.where((q) => q.category == category).toList();
-    if (pool.isEmpty) return null;
-    return pool[DateTime.now().millisecond % pool.length];
+    final filtered = questions.where((q) {
+      if (q.pool != pool) return false;
+      if (category != null && q.category != category) return false;
+      return true;
+    }).toList();
+    if (filtered.isEmpty) return null;
+    return filtered[DateTime.now().millisecond % filtered.length];
   }
 
   @override
@@ -321,6 +346,10 @@ class SqliteTeacherRepository implements AbstractTeacherRepository {
       question: row['question']! as String,
       answer: row['answer']! as String,
       category: QuestionCategory.fromStorage(row['category'] as String?),
+      pool: QuestionPool.fromStorage(row['pool'] as String?),
+      askedCount: (row['asked_count'] as num?)?.toInt() ?? 0,
+      correctCount: (row['correct_count'] as num?)?.toInt() ?? 0,
+      points: (row['points'] as num?)?.toInt() ?? 0,
       createdBy: row['created_by']! as String,
       createdAt: row['created_at']! as String,
       updatedAt: row['updated_at']! as String,

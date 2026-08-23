@@ -156,6 +156,16 @@ enum QuestionCategory {
   }
 }
 
+enum QuestionPool {
+  daily,
+  bank;
+
+  static QuestionPool fromStorage(String? raw) {
+    if (raw == QuestionPool.daily.name) return QuestionPool.daily;
+    return QuestionPool.bank;
+  }
+}
+
 class QaQuestion {
   const QaQuestion({
     required this.id,
@@ -166,6 +176,10 @@ class QaQuestion {
     required this.createdBy,
     required this.createdAt,
     required this.updatedAt,
+    this.pool = QuestionPool.bank,
+    this.askedCount = 0,
+    this.correctCount = 0,
+    this.points = 0,
   });
 
   final String id;
@@ -173,9 +187,43 @@ class QaQuestion {
   final String question;
   final String answer;
   final QuestionCategory category;
+  final QuestionPool pool;
+  final int askedCount;
+  final int correctCount;
+  final int points;
   final String createdBy;
   final String createdAt;
   final String updatedAt;
+
+  QaQuestion copyWith({
+    String? id,
+    String? circleId,
+    String? question,
+    String? answer,
+    QuestionCategory? category,
+    QuestionPool? pool,
+    int? askedCount,
+    int? correctCount,
+    int? points,
+    String? createdBy,
+    String? createdAt,
+    String? updatedAt,
+  }) {
+    return QaQuestion(
+      id: id ?? this.id,
+      circleId: circleId ?? this.circleId,
+      question: question ?? this.question,
+      answer: answer ?? this.answer,
+      category: category ?? this.category,
+      pool: pool ?? this.pool,
+      askedCount: askedCount ?? this.askedCount,
+      correctCount: correctCount ?? this.correctCount,
+      points: points ?? this.points,
+      createdBy: createdBy ?? this.createdBy,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
 }
 
 class HonorEntry {

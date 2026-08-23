@@ -108,10 +108,8 @@ class AppDependencies {
       updateSessionDetailsUseCase: UpdateSessionDetailsUseCase(
         teacherRepository,
       ),
-      submitStudentRequestUseCase: SubmitStudentRequestUseCase(
-        teacherRepository,
-      ),
-      listMyStudentRequestsUseCase: ListMyStudentRequestsUseCase(
+      addStudentToCircleUseCase: AddStudentToCircleUseCase(teacherRepository),
+      promoteDailyQuestionsUseCase: PromoteDailyQuestionsUseCase(
         teacherRepository,
       ),
     );
