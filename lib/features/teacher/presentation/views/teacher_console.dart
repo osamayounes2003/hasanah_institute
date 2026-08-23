@@ -40,7 +40,7 @@ class _TeacherConsoleState extends State<TeacherConsole>
     with SingleTickerProviderStateMixin {
   late final TabController _tabs;
   final _presentIds = <String>{};
-  final _pointsController = TextEditingController(text: '1');
+  final _pointsController = TextEditingController(text: '0');
   final _questionController = TextEditingController();
   final _answerController = TextEditingController();
   String? _selectedStudentId;

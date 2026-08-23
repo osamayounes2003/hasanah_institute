@@ -30,7 +30,9 @@ class PointsTab extends StatelessWidget {
               style: Theme.of(context).textTheme.titleLarge,
             ),
             const SizedBox(height: 8),
-            const Text('اختر طالباً ثم أسند له عدداً من النقاط داخل الجلسة المفتوحة.'),
+            const Text(
+              'اختر طالباً ثم أضف أو أزل نقاطاً من عدّاده داخل الجلسة المفتوحة.',
+            ),
             const SizedBox(height: 16),
             DropdownButtonFormField<String>(
               initialValue: selectedStudentId,
@@ -53,30 +55,53 @@ class PointsTab extends StatelessWidget {
               decoration: const InputDecoration(labelText: 'عدد النقاط'),
             ),
             const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: () {
-                final points = int.tryParse(pointsController.text.trim()) ?? 0;
-                final studentId = selectedStudentId;
-                if (studentId == null) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('اختر طالباً أولاً.')),
-                  );
-                  return;
-                }
-                context.read<CircleSessionCubit>().awardPointsToStudent(
-                  circleId: circleId,
-                  studentId: studentId,
-                  points: points,
-                  reason: PointReason.award,
-                  note: 'تقدير الشيخ',
-                );
-              },
-              icon: const Icon(Icons.stars_rounded),
-              label: const Text('إسناد النقاط'),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: () => _apply(context, add: true),
+                    icon: const Icon(Icons.add_rounded),
+                    label: const Text('إضافة'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => _apply(context, add: false),
+                    icon: const Icon(Icons.remove_rounded),
+                    label: const Text('إزالة'),
+                  ),
+                ),
+              ],
             ),
           ],
         );
       },
     );
+  }
+
+  void _apply(BuildContext context, {required bool add}) {
+    final amount = int.tryParse(pointsController.text.trim()) ?? 0;
+    final studentId = selectedStudentId;
+    if (studentId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('اختر طالباً أولاً.')),
+      );
+      return;
+    }
+    if (amount < 1) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('أدخل عدداً أكبر من صفر.')),
+      );
+      return;
+    }
+    context.read<CircleSessionCubit>().awardPointsToStudent(
+      circleId: circleId,
+      studentId: studentId,
+      points: add ? amount : -amount,
+      reason: PointReason.award,
+      note: add ? 'إضافة نقاط' : 'إزالة نقاط',
+    );
+    pointsController.text = '0';
   }
 }

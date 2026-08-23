@@ -368,11 +368,11 @@ class CircleSessionCubit extends Cubit<CircleSessionState> {
     required PointReason reason,
     String? note,
   }) async {
-    if (points < 1) {
+    if (points == 0) {
       emit(
         state.copyWith(
           status: CircleSessionUiStatus.failure,
-          message: 'أدخل عدداً صحيحاً من النقاط (1 فأكثر).',
+          message: 'أدخل عدداً أكبر من صفر.',
         ),
       );
       return;
@@ -382,10 +382,26 @@ class CircleSessionCubit extends Cubit<CircleSessionState> {
       emit(
         state.copyWith(
           status: CircleSessionUiStatus.failure,
-          message: 'إسناد النقاط يتم داخل جلسة مفتوحة فقط.',
+          message: 'تعديل النقاط يتم داخل جلسة مفتوحة فقط.',
         ),
       );
       return;
+    }
+    var delta = points;
+    if (delta < 0) {
+      final current = state.studentPoints[studentId] ?? 0;
+      if (current <= 0) {
+        emit(
+          state.copyWith(
+            status: CircleSessionUiStatus.failure,
+            message: 'لا توجد نقاط لإزالتها عن هذا الطالب.',
+          ),
+        );
+        return;
+      }
+      if (current + delta < 0) {
+        delta = -current;
+      }
     }
     emit(
       state.copyWith(status: CircleSessionUiStatus.saving, clearMessage: true),
@@ -398,7 +414,7 @@ class CircleSessionCubit extends Cubit<CircleSessionState> {
           studentId: studentId,
           circleId: circleId,
           sessionId: session.id,
-          points: points,
+          points: delta,
           reason: reason,
           note: note,
           awardedAt: now,
@@ -410,7 +426,9 @@ class CircleSessionCubit extends Cubit<CircleSessionState> {
       emit(
         state.copyWith(
           status: CircleSessionUiStatus.success,
-          message: 'تم إسناد $points نقطة.',
+          message: delta > 0
+              ? 'تمت إضافة $delta نقطة.'
+              : 'تم إنقاص ${-delta} نقطة.',
         ),
       );
     } catch (_) {

@@ -104,7 +104,7 @@ class _QuestionRevealDialogState extends State<QuestionRevealDialog> {
   }
 
   Future<void> _award(BuildContext context) async {
-    final pointsController = TextEditingController(text: '2');
+    final pointsController = TextEditingController(text: '0');
     String? studentId = widget.students.first.id;
     final confirmed = await showDialog<bool>(
       context: context,

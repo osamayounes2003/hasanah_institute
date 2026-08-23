@@ -350,9 +350,9 @@ class FirestoreTeacherRepository implements AbstractTeacherRepository {
           'category': question.category.name,
           'category_label': question.category.label,
           'pool': question.pool.name,
-          'asked_count': question.askedCount,
-          'correct_count': question.correctCount,
-          'points': question.points,
+          'asked_count': 0,
+          'correct_count': 0,
+          'points': 0,
           'shown_session_id': question.shownSessionId,
           'created_by': question.createdBy,
           'created_at': question.createdAt,
@@ -388,7 +388,9 @@ class FirestoreTeacherRepository implements AbstractTeacherRepository {
     if (sessionId == null || sessionId.isEmpty) return picked;
     final marked = picked.copyWith(
       shownSessionId: sessionId,
-      askedCount: picked.askedCount + 1,
+      askedCount: 0,
+      correctCount: 0,
+      points: 0,
       updatedAt: DateTime.now().toUtc().toIso8601String(),
     );
     unawaited(saveQuestion(marked));
@@ -847,9 +849,9 @@ class FirestoreTeacherRepository implements AbstractTeacherRepository {
         (row['category'] as String?) ?? (row['category_label'] as String?),
       ),
       pool: QuestionPool.fromStorage(row['pool'] as String?),
-      askedCount: (row['asked_count'] as num?)?.toInt() ?? 0,
-      correctCount: (row['correct_count'] as num?)?.toInt() ?? 0,
-      points: (row['points'] as num?)?.toInt() ?? 0,
+      askedCount: 0,
+      correctCount: 0,
+      points: 0,
       shownSessionId: row['shown_session_id'] as String? ?? '',
       createdBy: row['created_by'] as String,
       createdAt: row['created_at'] as String,
