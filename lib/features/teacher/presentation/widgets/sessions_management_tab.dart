@@ -165,23 +165,23 @@ class _SessionReportCard extends StatelessWidget {
             ],
             const SizedBox(height: 10),
             Text(
-              'النقاط في هذه الجلسة',
+              'عداد النقاط',
               style: Theme.of(context).textTheme.titleSmall,
             ),
-            if (report.pointAwards.isEmpty)
-              const Text('لا نقاط مسجّلة لهذه الجلسة.')
+            if (report.studentPointTotals.isEmpty)
+              const Text('لا طلاب في هذه الجلسة بعد.')
             else
-              for (final award in report.pointAwards)
+              for (final row in report.studentPointTotals)
                 ListTile(
                   dense: true,
                   contentPadding: EdgeInsets.zero,
-                  title: Text(award.studentName),
-                  subtitle: Text(_reasonLabel(award.reason, award.note)),
+                  title: Text(row.studentName),
                   trailing: Text(
-                    '+${award.points}',
+                    '${row.points}',
                     style: const TextStyle(
                       color: HasanahColors.accent,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 18,
                     ),
                   ),
                 ),
@@ -192,16 +192,6 @@ class _SessionReportCard extends StatelessWidget {
   }
 
   String _dateLabel(String raw) => SyriaTime.display(raw);
-
-  String _reasonLabel(PointReason reason, String? note) {
-    final base = switch (reason) {
-      PointReason.attendance => 'حضور',
-      PointReason.award => 'تقدير',
-      PointReason.qa => 'أسئلة',
-    };
-    if (note == null || note.isEmpty) return base;
-    return '$base — $note';
-  }
 
   DateTime _parseDate(String? raw, {DateTime? fallback}) {
     final base = fallback ?? DateTime.now();

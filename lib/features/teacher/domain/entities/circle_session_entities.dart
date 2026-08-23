@@ -78,6 +78,31 @@ class SessionReport {
 
   List<SessionAttendee> get presentStudents =>
       attendees.where((a) => a.status == AttendanceStatus.present).toList();
+
+  /// One total per student — not a line for every award.
+  List<({String studentId, String studentName, int points})>
+      get studentPointTotals {
+    final totals = <String, ({String name, int points})>{};
+    for (final attendee in attendees) {
+      totals[attendee.studentId] = (name: attendee.studentName, points: 0);
+    }
+    for (final award in pointAwards) {
+      final previous = totals[award.studentId];
+      totals[award.studentId] = (
+        name: award.studentName,
+        points: (previous?.points ?? 0) + award.points,
+      );
+    }
+    final rows = [
+      for (final entry in totals.entries)
+        (
+          studentId: entry.key,
+          studentName: entry.value.name,
+          points: entry.value.points,
+        ),
+    ]..sort((a, b) => a.studentName.compareTo(b.studentName));
+    return rows;
+  }
 }
 
 enum StudentRequestStatus { pending, approved, rejected }
