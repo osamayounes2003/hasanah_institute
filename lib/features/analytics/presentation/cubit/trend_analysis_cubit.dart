@@ -1,7 +1,7 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../domain/entities/student_trend.dart';
-import '../../domain/repositories/abstract_analytics_repository.dart';
+import '../../domain/usecases/analytics_usecases.dart';
 
 enum TrendAnalysisStatus { initial, loading, success, failure }
 
@@ -39,14 +39,18 @@ class TrendAnalysisState {
 }
 
 class TrendAnalysisCubit extends Cubit<TrendAnalysisState> {
-  TrendAnalysisCubit(this._repository) : super(const TrendAnalysisState());
+  TrendAnalysisCubit({
+    required this.calculateStudentTrendUseCase,
+    required this.getInterventionStudentsUseCase,
+  }) : super(const TrendAnalysisState());
 
-  final AbstractAnalyticsRepository _repository;
+  final CalculateStudentTrendUseCase calculateStudentTrendUseCase;
+  final GetInterventionStudentsUseCase getInterventionStudentsUseCase;
 
   Future<void> analyzeStudent(String studentId) async {
     emit(state.copyWith(status: TrendAnalysisStatus.loading, clearError: true));
     try {
-      final trend = await _repository.calculateStudentTrend(studentId);
+      final trend = await calculateStudentTrendUseCase(studentId);
       emit(
         state.copyWith(
           status: TrendAnalysisStatus.success,
@@ -66,9 +70,7 @@ class TrendAnalysisCubit extends Cubit<TrendAnalysisState> {
   Future<void> loadStudentsRequiringIntervention({String? circleId}) async {
     emit(state.copyWith(status: TrendAnalysisStatus.loading, clearError: true));
     try {
-      final trends = await _repository.getStudentsRequiringIntervention(
-        circleId: circleId,
-      );
+      final trends = await getInterventionStudentsUseCase(circleId: circleId);
       emit(
         state.copyWith(
           status: TrendAnalysisStatus.success,

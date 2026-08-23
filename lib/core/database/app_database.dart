@@ -68,6 +68,13 @@ class AppDatabase {
         }
         await DatabaseSeeder.seedDemoData(transaction);
       }
+      if (oldVersion < 3) {
+        for (final statement in DatabaseSchema.migrationV3Statements) {
+          await transaction.execute(statement);
+        }
+        await DatabaseSeeder.seedRbac(transaction);
+        await DatabaseSeeder.seedDemoData(transaction);
+      }
     });
   }
 }

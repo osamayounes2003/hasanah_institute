@@ -69,7 +69,6 @@ class SqliteAnalyticsRepository implements AbstractAnalyticsRepository {
         WITH evaluation_totals AS (
           SELECT
             e.student_id,
-            e.circle_id,
             SUM(
               e.new_hifz_score +
               e.close_review_score +
@@ -86,22 +85,25 @@ class SqliteAnalyticsRepository implements AbstractAnalyticsRepository {
           WHERE
             (? IS NULL OR e.evaluated_at LIKE ? || '%')
             AND (? IS NULL OR e.circle_id = ?)
-          GROUP BY e.student_id, e.circle_id
+          GROUP BY e.student_id
         )
         SELECT
           u.id AS student_id,
           u.name AS student_name,
-          et.circle_id,
-          COALESCE(c.name, 'غير مسند') AS circle_name,
+          ? AS circle_id,
+          CASE
+            WHEN ? IS NULL THEN 'جميع الحلقات'
+            ELSE COALESCE(c.name, 'غير مسند')
+          END AS circle_name,
           et.total_points,
           et.average_score
         FROM evaluation_totals et
         INNER JOIN ${DatabaseSchema.users} u ON u.id = et.student_id
-        LEFT JOIN ${DatabaseSchema.circles} c ON c.id = et.circle_id
+        LEFT JOIN ${DatabaseSchema.circles} c ON c.id = ?
         WHERE u.role = 'student'
         ORDER BY et.total_points DESC, et.average_score DESC, u.name COLLATE NOCASE
       ''',
-      [month, month, circleId, circleId],
+      [month, month, circleId, circleId, circleId, circleId, circleId],
     );
 
     return [
@@ -131,7 +133,7 @@ class SqliteAnalyticsRepository implements AbstractAnalyticsRepository {
             ) AS session_rank
           FROM ${DatabaseSchema.evaluations} e
           INNER JOIN ${DatabaseSchema.users} u ON u.id = e.student_id
-          WHERE u.role = 'student'
+          WHERE u.role = 'student' AND (? IS NULL OR e.circle_id = ?)
         ),
         trend_metrics AS (
           SELECT
@@ -153,13 +155,6 @@ class SqliteAnalyticsRepository implements AbstractAnalyticsRepository {
         WHERE
           tm.evaluation_count >= 4
           AND tm.overall_average - tm.moving_average >= 2
-          AND (
-            ? IS NULL OR EXISTS (
-              SELECT 1
-              FROM ${DatabaseSchema.circleStudents} cs
-              WHERE cs.student_id = tm.student_id AND cs.circle_id = ?
-            )
-          )
         ORDER BY tm.overall_average - tm.moving_average DESC
       ''',
       [circleId, circleId],

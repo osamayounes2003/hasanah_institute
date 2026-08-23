@@ -23,6 +23,20 @@ class SqliteAuthRepository implements AuthRepository {
   }
 
   @override
+  Future<InstituteUser> signInWithPassword(String password) async {
+    final match = await _localDataSource.userByPassword(password);
+    if (match == null) {
+      throw StateError('كلمة المرور غير صحيحة.');
+    }
+    final role = match['role'] as String?;
+    if (role != 'admin' && role != 'teacher') {
+      throw StateError('التطبيق متاح للمدير والشيخ فقط.');
+    }
+    _currentUserId = match['id']! as String;
+    return _userFromRow(match);
+  }
+
+  @override
   Future<bool> hasPermission({
     required UserRole role,
     required String permissionCode,
@@ -33,23 +47,17 @@ class SqliteAuthRepository implements AuthRepository {
     );
   }
 
-  @override
-  Future<void> setCurrentUser(String userId) async {
-    final user = await _localDataSource.userById(userId);
-    if (user == null) {
-      throw StateError('Cannot create a session for an unknown user.');
-    }
-    _currentUserId = userId;
-  }
-
   InstituteUser _userFromRow(Map<String, Object?> row) {
     return InstituteUser(
       id: row['id']! as String,
       name: row['name']! as String,
+      phone: row['phone'] as String?,
+      password: row['password'] as String?,
       role: UserRole.values.byName(row['role']! as String),
       parentId: row['parent_id'] as String?,
       createdAt: IsoDateTime.decode(row['created_at']! as String),
       updatedAt: IsoDateTime.decode(row['updated_at']! as String),
+      totalPoints: (row['total_points'] as num?)?.toInt() ?? 0,
     );
   }
 }

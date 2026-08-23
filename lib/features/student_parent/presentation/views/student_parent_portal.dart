@@ -9,18 +9,29 @@ class StudentParentPortal extends StatelessWidget {
     required this.studentId,
     required this.hifzPlan,
     required this.walletRepository,
+    this.onSignOut,
     super.key,
   });
 
   final String studentId;
   final HifzPlan hifzPlan;
   final AbstractWalletRepository walletRepository;
+  final VoidCallback? onSignOut;
 
   @override
   Widget build(BuildContext context) {
-    final completedFraction = hifzPlan.remainingUnits == 0 ? 1.0 : 0.35;
+    final planAfterMissedSession = hifzPlan.rebalanceAfterMissedSessions(1);
     return Scaffold(
-      appBar: AppBar(title: const Text('رحلة الحفظ والمحفظة')),
+      appBar: AppBar(
+        title: const Text('رحلة الحفظ والمحفظة'),
+        actions: [
+          IconButton(
+            tooltip: 'تسجيل الخروج',
+            onPressed: onSignOut,
+            icon: const Icon(Icons.logout_outlined),
+          ),
+        ],
+      ),
       body: LayoutBuilder(
         builder: (context, constraints) => Center(
           child: ConstrainedBox(
@@ -37,13 +48,24 @@ class StudentParentPortal extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        LinearProgressIndicator(value: completedFraction),
+                        LinearProgressIndicator(
+                          value: hifzPlan.completionRatio,
+                        ),
                         const SizedBox(height: 12),
+                        Text(
+                          'الإنجاز: ${(hifzPlan.completionRatio * 100).toStringAsFixed(1)}%',
+                        ),
+                        Text(
+                          'المحفوظ: ${hifzPlan.completedUnits}/${hifzPlan.totalUnits} ${hifzPlan.unit.name}',
+                        ),
                         Text(
                           'المتبقي: ${hifzPlan.remainingUnits} ${hifzPlan.unit.name}',
                         ),
                         Text(
                           'الواجب اليومي: ${hifzPlan.dailyTarget.toStringAsFixed(1)}',
+                        ),
+                        Text(
+                          'الواجب بعد غياب حصة: ${planAfterMissedSession.dailyTarget.toStringAsFixed(1)}',
                         ),
                       ],
                     ),
@@ -66,6 +88,44 @@ class StudentParentPortal extends StatelessWidget {
                         title: Text('${snapshot.data?.balance ?? 0} رمز'),
                         subtitle: const Text('يمكن استبدالها بمكافآت المؤسسة.'),
                       ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 16),
+                const Text('متجر المكافآت', style: TextStyle(fontSize: 20)),
+                FutureBuilder<List<RewardItem>>(
+                  future: walletRepository.getAvailableRewards(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState != ConnectionState.done) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    if (snapshot.hasError) {
+                      return const Text('تعذر تحميل متجر المكافآت.');
+                    }
+                    final rewards = snapshot.data ?? const <RewardItem>[];
+                    if (rewards.isEmpty) {
+                      return const Text('لا توجد مكافآت متاحة حالياً.');
+                    }
+                    return Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: [
+                        for (final reward in rewards)
+                          SizedBox(
+                            width: constraints.maxWidth >= 700
+                                ? (constraints.maxWidth - 44) / 2
+                                : double.infinity,
+                            child: Card(
+                              child: ListTile(
+                                leading: const Icon(Icons.redeem_outlined),
+                                title: Text(reward.name),
+                                subtitle: Text(
+                                  'التكلفة: ${reward.tokenCost} | المتاح: ${reward.availableQuantity}',
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
                     );
                   },
                 ),

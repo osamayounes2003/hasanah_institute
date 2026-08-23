@@ -9,16 +9,16 @@ class AuthGateScreen extends StatelessWidget {
     required this.sessionCubit,
     required this.adminBuilder,
     required this.teacherBuilder,
-    required this.studentParentBuilder,
     required this.loginBuilder,
+    required this.unauthorizedBuilder,
     super.key,
   });
 
   final SessionCubit sessionCubit;
   final WidgetBuilder adminBuilder;
   final WidgetBuilder teacherBuilder;
-  final WidgetBuilder studentParentBuilder;
   final WidgetBuilder loginBuilder;
+  final WidgetBuilder unauthorizedBuilder;
 
   @override
   Widget build(BuildContext context) {
@@ -26,14 +26,11 @@ class AuthGateScreen extends StatelessWidget {
       value: sessionCubit,
       child: BlocBuilder<SessionCubit, InstituteUser?>(
         builder: (context, user) {
-          if (user == null) {
-            return loginBuilder(context);
-          }
+          if (user == null) return loginBuilder(context);
           return switch (user.role) {
             UserRole.admin => adminBuilder(context),
             UserRole.teacher => teacherBuilder(context),
-            UserRole.student ||
-            UserRole.parent => studentParentBuilder(context),
+            UserRole.student || UserRole.parent => unauthorizedBuilder(context),
           };
         },
       ),

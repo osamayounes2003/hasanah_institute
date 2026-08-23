@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "356401382695",
+    "project_id": "hasanah-a13f5",
+    "storage_bucket": "hasanah-a13f5.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:356401382695:android:c5480b308b6600b950d502",
+        "android_client_info": {
+          "package_name": "com.example.hasanah"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAdp2BYRyRsKsPkSFWm5QixbynUOyKRnYs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

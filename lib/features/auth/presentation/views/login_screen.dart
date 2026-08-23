@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../../shared/domain/entities/institute_entities.dart';
 import '../cubit/session_cubit.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -14,14 +13,14 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _userIdController = TextEditingController(text: 'demo-admin');
-  UserRole _selectedRole = UserRole.admin;
+  final _passwordController = TextEditingController();
   String? _errorMessage;
   bool _isSubmitting = false;
+  bool _obscure = true;
 
   @override
   void dispose() {
-    _userIdController.dispose();
+    _passwordController.dispose();
     super.dispose();
   }
 
@@ -44,12 +43,15 @@ class _LoginScreenState extends State<LoginScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          const Icon(
-                            Icons.menu_book_rounded,
-                            size: 56,
-                            color: Color(0xFFD4AF37),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(20),
+                            child: Image.asset(
+                              'lib/assets/images/hasanahlogo.png',
+                              height: 88,
+                              fit: BoxFit.contain,
+                            ),
                           ),
-                          const SizedBox(height: 12),
+                          const SizedBox(height: 16),
                           Text(
                             'أهلاً بك في حسنة',
                             textAlign: TextAlign.center,
@@ -57,42 +59,32 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                           const SizedBox(height: 6),
                           const Text(
-                            'سجّل دخولك للوصول إلى مساحة العمل المناسبة.',
+                            'أدخل كلمة المرور للدخول.',
                             textAlign: TextAlign.center,
                           ),
                           const SizedBox(height: 24),
                           TextFormField(
-                            controller: _userIdController,
-                            decoration: const InputDecoration(
-                              labelText: 'معرّف المستخدم',
-                              prefixIcon: Icon(Icons.person_outline),
-                              helperText:
-                                  'للمعاينة: demo-admin أو demo-teacher',
+                            controller: _passwordController,
+                            obscureText: _obscure,
+                            textInputAction: TextInputAction.done,
+                            onFieldSubmitted: (_) => _signIn(),
+                            decoration: InputDecoration(
+                              labelText: 'كلمة المرور',
+                              prefixIcon: const Icon(Icons.lock_outline),
+                              suffixIcon: IconButton(
+                                onPressed: () =>
+                                    setState(() => _obscure = !_obscure),
+                                icon: Icon(
+                                  _obscure
+                                      ? Icons.visibility_outlined
+                                      : Icons.visibility_off_outlined,
+                                ),
+                              ),
                             ),
                             validator: (value) =>
-                                value == null || value.trim().isEmpty
-                                ? 'أدخل معرّف المستخدم.'
+                                value == null || value.isEmpty
+                                ? 'أدخل كلمة المرور.'
                                 : null,
-                          ),
-                          const SizedBox(height: 16),
-                          DropdownButtonFormField<UserRole>(
-                            initialValue: _selectedRole,
-                            decoration: const InputDecoration(
-                              labelText: 'نوع الحساب',
-                              prefixIcon: Icon(Icons.badge_outlined),
-                            ),
-                            items: [
-                              for (final role in UserRole.values)
-                                DropdownMenuItem(
-                                  value: role,
-                                  child: Text(_roleLabel(role)),
-                                ),
-                            ],
-                            onChanged: (role) {
-                              if (role != null) {
-                                setState(() => _selectedRole = role);
-                              }
-                            },
                           ),
                           if (_errorMessage != null) ...[
                             const SizedBox(height: 16),
@@ -130,35 +122,22 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _signIn() async {
+    FocusScope.of(context).unfocus();
     if (!_formKey.currentState!.validate()) return;
     setState(() {
       _isSubmitting = true;
       _errorMessage = null;
     });
     try {
-      await widget.sessionCubit.signIn(_userIdController.text.trim());
-      final user = widget.sessionCubit.state;
-      if (user == null || user.role != _selectedRole) {
-        await widget.sessionCubit.signOut();
-        throw StateError('نوع الحساب لا يطابق بيانات المستخدم.');
-      }
+      await widget.sessionCubit.signIn(password: _passwordController.text);
     } on StateError catch (error) {
       if (mounted) setState(() => _errorMessage = error.message.toString());
     } catch (_) {
       if (mounted) {
-        setState(() => _errorMessage = 'تعذر تسجيل الدخول محلياً.');
+        setState(() => _errorMessage = 'تعذر تسجيل الدخول.');
       }
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }
-  }
-
-  String _roleLabel(UserRole role) {
-    return switch (role) {
-      UserRole.admin => 'مدير',
-      UserRole.teacher => 'معلّم',
-      UserRole.student => 'طالب',
-      UserRole.parent => 'ولي أمر',
-    };
   }
 }

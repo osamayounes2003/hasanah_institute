@@ -9,15 +9,21 @@ class InstituteUser {
     required this.role,
     required this.createdAt,
     required this.updatedAt,
+    this.phone,
+    this.password,
     this.parentId,
+    this.totalPoints = 0,
   });
 
   final String id;
   final String name;
   final UserRole role;
+  final String? phone;
+  final String? password;
   final String? parentId;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final int totalPoints;
 }
 
 class Circle {
@@ -27,11 +33,13 @@ class Circle {
     required this.teacherId,
     required this.createdAt,
     required this.updatedAt,
+    this.teacherName,
   });
 
   final String id;
   final String name;
   final String teacherId;
+  final String? teacherName;
   final DateTime createdAt;
   final DateTime updatedAt;
 }
@@ -67,9 +75,7 @@ class Evaluation {
     required this.createdAt,
     required this.updatedAt,
     this.notes,
-  }) : assert(newHifzScore >= 0 && newHifzScore <= 10),
-       assert(closeReviewScore >= 0 && closeReviewScore <= 10),
-       assert(distantReviewScore >= 0 && distantReviewScore <= 10);
+  });
 
   final String id;
   final String studentId;
@@ -80,9 +86,6 @@ class Evaluation {
   final String? notes;
   final DateTime createdAt;
   final DateTime updatedAt;
-
-  double get averageScore =>
-      (newHifzScore + closeReviewScore + distantReviewScore) / 3;
 }
 
 class Permission {

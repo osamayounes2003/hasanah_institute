@@ -3,6 +3,8 @@ enum HifzUnit { pages, verses }
 class HifzPlan {
   const HifzPlan({
     required this.unit,
+    required this.totalUnits,
+    required this.completedUnits,
     required this.remainingUnits,
     required this.availableDays,
     required this.dailyTarget,
@@ -10,10 +12,30 @@ class HifzPlan {
   });
 
   final HifzUnit unit;
+  final int totalUnits;
+  final int completedUnits;
   final int remainingUnits;
   final int availableDays;
   final double dailyTarget;
   final DateTime targetDate;
+
+  double get completionRatio =>
+      totalUnits == 0 ? 1 : completedUnits / totalUnits;
+
+  /// Raises the daily target when one or more sessions are missed.
+  HifzPlan rebalanceAfterMissedSessions(int missedSessions) {
+    if (missedSessions <= 0) return this;
+    final adjustedDays = (availableDays - missedSessions).clamp(1, 1000000);
+    return HifzPlan(
+      unit: unit,
+      totalUnits: totalUnits,
+      completedUnits: completedUnits,
+      remainingUnits: remainingUnits,
+      availableDays: adjustedDays,
+      dailyTarget: remainingUnits == 0 ? 0 : remainingUnits / adjustedDays,
+      targetDate: targetDate,
+    );
+  }
 }
 
 abstract final class HifzPlanCalculator {
@@ -55,6 +77,8 @@ abstract final class HifzPlanCalculator {
     final remainingUnits = totalUnits - completedUnits;
     return HifzPlan(
       unit: unit,
+      totalUnits: totalUnits,
+      completedUnits: completedUnits,
       remainingUnits: remainingUnits,
       availableDays: availableDays,
       dailyTarget: remainingUnits == 0 ? 0 : remainingUnits / availableDays,

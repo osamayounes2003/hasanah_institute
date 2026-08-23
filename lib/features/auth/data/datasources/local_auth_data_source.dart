@@ -17,6 +17,34 @@ class LocalAuthDataSource {
     return rows.isEmpty ? null : Map<String, Object?>.from(rows.single);
   }
 
+  Future<Map<String, Object?>?> userByPhone(String phone) async {
+    final database = await _appDatabase.database;
+    final rows = await database.query(
+      DatabaseSchema.users,
+      where: 'phone = ?',
+      whereArgs: [phone],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : Map<String, Object?>.from(rows.single);
+  }
+
+  Future<Map<String, Object?>?> userByPassword(String password) async {
+    final database = await _appDatabase.database;
+    final rows = await database.query(
+      DatabaseSchema.users,
+      where: 'password = ? AND role IN (?, ?)',
+      whereArgs: [password, 'admin', 'teacher'],
+      limit: 2,
+    );
+    if (rows.isEmpty) return null;
+    if (rows.length > 1) {
+      throw StateError(
+        'كلمة المرور مستخدمة لأكثر من حساب. غيّرها من لوحة المدير.',
+      );
+    }
+    return Map<String, Object?>.from(rows.single);
+  }
+
   Future<bool> roleHasPermission({
     required String role,
     required String permissionCode,

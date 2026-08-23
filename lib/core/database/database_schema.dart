@@ -1,6 +1,6 @@
 abstract final class DatabaseSchema {
   static const databaseName = 'hasanah.db';
-  static const version = 2;
+  static const version = 3;
 
   static const users = 'users';
   static const permissions = 'permissions';
@@ -12,6 +12,9 @@ abstract final class DatabaseSchema {
   static const rewardStore = 'reward_store';
   static const walletTransactions = 'wallet_transactions';
   static const instituteEvents = 'institute_events';
+  static const teachingSessions = 'teaching_sessions';
+  static const pointLedger = 'point_ledger';
+  static const qaQuestions = 'qa_questions';
 
   static const createStatements = <String>[
     '''
@@ -57,15 +60,31 @@ abstract final class DatabaseSchema {
       )
     ''',
     '''
+      CREATE TABLE $teachingSessions (
+        id TEXT PRIMARY KEY NOT NULL,
+        circle_id TEXT NOT NULL REFERENCES $circles(id) ON DELETE CASCADE,
+        teacher_id TEXT NOT NULL REFERENCES $users(id) ON DELETE RESTRICT,
+        session_date TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        ended_at TEXT,
+        status TEXT NOT NULL CHECK(status IN ('open', 'closed')),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(circle_id, session_date)
+      )
+    ''',
+    '''
       CREATE TABLE $attendance (
         id TEXT PRIMARY KEY NOT NULL,
         student_id TEXT NOT NULL REFERENCES $users(id) ON DELETE CASCADE,
         circle_id TEXT NOT NULL REFERENCES $circles(id) ON DELETE CASCADE,
+        session_id TEXT REFERENCES $teachingSessions(id) ON DELETE SET NULL,
+        attendance_date TEXT NOT NULL,
         attendance_at TEXT NOT NULL,
         status TEXT NOT NULL CHECK(status IN ('present', 'absent', 'late')),
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
-        UNIQUE(student_id, circle_id, attendance_at)
+        UNIQUE(student_id, circle_id, attendance_date)
       )
     ''',
     '''
@@ -82,13 +101,41 @@ abstract final class DatabaseSchema {
         updated_at TEXT NOT NULL
       )
     ''',
+    '''
+      CREATE TABLE $pointLedger (
+        id TEXT PRIMARY KEY NOT NULL,
+        student_id TEXT NOT NULL REFERENCES $users(id) ON DELETE CASCADE,
+        circle_id TEXT NOT NULL REFERENCES $circles(id) ON DELETE CASCADE,
+        session_id TEXT REFERENCES $teachingSessions(id) ON DELETE SET NULL,
+        points INTEGER NOT NULL CHECK(points > 0),
+        reason TEXT NOT NULL CHECK(reason IN ('attendance', 'award', 'qa')),
+        note TEXT,
+        awarded_at TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      )
+    ''',
+    '''
+      CREATE TABLE $qaQuestions (
+        id TEXT PRIMARY KEY NOT NULL,
+        circle_id TEXT NOT NULL REFERENCES $circles(id) ON DELETE CASCADE,
+        question TEXT NOT NULL,
+        answer TEXT NOT NULL,
+        created_by TEXT NOT NULL REFERENCES $users(id) ON DELETE RESTRICT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    ''',
     'CREATE INDEX idx_users_parent_id ON $users(parent_id)',
     'CREATE INDEX idx_circles_teacher_id ON $circles(teacher_id)',
     'CREATE INDEX idx_circle_students_student_id ON $circleStudents(student_id)',
-    'CREATE INDEX idx_attendance_student_date ON $attendance(student_id, attendance_at)',
-    'CREATE INDEX idx_attendance_circle_date ON $attendance(circle_id, attendance_at)',
+    'CREATE INDEX idx_attendance_student_date ON $attendance(student_id, attendance_date)',
+    'CREATE INDEX idx_attendance_circle_date ON $attendance(circle_id, attendance_date)',
     'CREATE INDEX idx_evaluations_student_date ON $evaluations(student_id, evaluated_at)',
     'CREATE INDEX idx_evaluations_circle_date ON $evaluations(circle_id, evaluated_at)',
+    'CREATE INDEX idx_sessions_circle_date ON $teachingSessions(circle_id, session_date)',
+    'CREATE INDEX idx_point_ledger_circle_awarded ON $pointLedger(circle_id, awarded_at)',
+    'CREATE INDEX idx_point_ledger_student ON $pointLedger(student_id, awarded_at)',
+    'CREATE INDEX idx_qa_questions_circle ON $qaQuestions(circle_id)',
     '''
       CREATE TABLE $rewardStore (
         id TEXT PRIMARY KEY NOT NULL,
@@ -133,9 +180,9 @@ abstract final class DatabaseSchema {
       ALTER TABLE $evaluations
       ADD COLUMN circle_id TEXT REFERENCES $circles(id) ON DELETE SET NULL
     ''',
-    'CREATE INDEX idx_evaluations_circle_date ON $evaluations(circle_id, evaluated_at)',
+    'CREATE INDEX IF NOT EXISTS idx_evaluations_circle_date ON $evaluations(circle_id, evaluated_at)',
     '''
-      CREATE TABLE $rewardStore (
+      CREATE TABLE IF NOT EXISTS $rewardStore (
         id TEXT PRIMARY KEY NOT NULL,
         name TEXT NOT NULL,
         description TEXT,
@@ -146,7 +193,7 @@ abstract final class DatabaseSchema {
       )
     ''',
     '''
-      CREATE TABLE $walletTransactions (
+      CREATE TABLE IF NOT EXISTS $walletTransactions (
         id TEXT PRIMARY KEY NOT NULL,
         student_id TEXT NOT NULL REFERENCES $users(id) ON DELETE CASCADE,
         reward_id TEXT REFERENCES $rewardStore(id) ON DELETE SET NULL,
@@ -157,9 +204,9 @@ abstract final class DatabaseSchema {
         created_at TEXT NOT NULL
       )
     ''',
-    'CREATE INDEX idx_wallet_transactions_student ON $walletTransactions(student_id, created_at)',
+    'CREATE INDEX IF NOT EXISTS idx_wallet_transactions_student ON $walletTransactions(student_id, created_at)',
     '''
-      CREATE TABLE $instituteEvents (
+      CREATE TABLE IF NOT EXISTS $instituteEvents (
         id TEXT PRIMARY KEY NOT NULL,
         title TEXT NOT NULL,
         description TEXT,
@@ -170,6 +217,62 @@ abstract final class DatabaseSchema {
         updated_at TEXT NOT NULL
       )
     ''',
-    'CREATE INDEX idx_institute_events_starts_at ON $instituteEvents(starts_at)',
+    'CREATE INDEX IF NOT EXISTS idx_institute_events_starts_at ON $instituteEvents(starts_at)',
+  ];
+
+  static const migrationV3Statements = <String>[
+    '''
+      CREATE TABLE IF NOT EXISTS $teachingSessions (
+        id TEXT PRIMARY KEY NOT NULL,
+        circle_id TEXT NOT NULL REFERENCES $circles(id) ON DELETE CASCADE,
+        teacher_id TEXT NOT NULL REFERENCES $users(id) ON DELETE RESTRICT,
+        session_date TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        ended_at TEXT,
+        status TEXT NOT NULL CHECK(status IN ('open', 'closed')),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(circle_id, session_date)
+      )
+    ''',
+    '''
+      CREATE TABLE IF NOT EXISTS $pointLedger (
+        id TEXT PRIMARY KEY NOT NULL,
+        student_id TEXT NOT NULL REFERENCES $users(id) ON DELETE CASCADE,
+        circle_id TEXT NOT NULL REFERENCES $circles(id) ON DELETE CASCADE,
+        session_id TEXT REFERENCES $teachingSessions(id) ON DELETE SET NULL,
+        points INTEGER NOT NULL CHECK(points > 0),
+        reason TEXT NOT NULL CHECK(reason IN ('attendance', 'award', 'qa')),
+        note TEXT,
+        awarded_at TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      )
+    ''',
+    '''
+      CREATE TABLE IF NOT EXISTS $qaQuestions (
+        id TEXT PRIMARY KEY NOT NULL,
+        circle_id TEXT NOT NULL REFERENCES $circles(id) ON DELETE CASCADE,
+        question TEXT NOT NULL,
+        answer TEXT NOT NULL,
+        created_by TEXT NOT NULL REFERENCES $users(id) ON DELETE RESTRICT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    ''',
+    'CREATE INDEX IF NOT EXISTS idx_sessions_circle_date ON $teachingSessions(circle_id, session_date)',
+    'CREATE INDEX IF NOT EXISTS idx_point_ledger_circle_awarded ON $pointLedger(circle_id, awarded_at)',
+    'CREATE INDEX IF NOT EXISTS idx_point_ledger_student ON $pointLedger(student_id, awarded_at)',
+    'CREATE INDEX IF NOT EXISTS idx_qa_questions_circle ON $qaQuestions(circle_id)',
+    'ALTER TABLE $attendance ADD COLUMN session_id TEXT',
+    'ALTER TABLE $attendance ADD COLUMN attendance_date TEXT',
+    '''
+      UPDATE $attendance
+      SET attendance_date = substr(attendance_at, 1, 10)
+      WHERE attendance_date IS NULL OR attendance_date = ''
+    ''',
+    '''
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_attendance_once_per_day
+      ON $attendance(student_id, circle_id, attendance_date)
+    ''',
   ];
 }

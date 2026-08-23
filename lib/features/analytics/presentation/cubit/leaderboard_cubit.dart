@@ -1,7 +1,7 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../domain/entities/leaderboard_entry.dart';
-import '../../domain/repositories/abstract_analytics_repository.dart';
+import '../../domain/usecases/analytics_usecases.dart';
 
 enum LeaderboardStatus { initial, loading, success, failure }
 
@@ -41,9 +41,9 @@ class LeaderboardState {
 }
 
 class LeaderboardCubit extends Cubit<LeaderboardState> {
-  LeaderboardCubit(this._repository) : super(const LeaderboardState());
+  LeaderboardCubit(this._getLeaderboard) : super(const LeaderboardState());
 
-  final AbstractAnalyticsRepository _repository;
+  final GetLeaderboardUseCase _getLeaderboard;
 
   Future<void> load({String? circleId, String? month}) async {
     emit(
@@ -54,10 +54,7 @@ class LeaderboardCubit extends Cubit<LeaderboardState> {
       ),
     );
     try {
-      final entries = await _repository.getLeaderboard(
-        circleId: circleId,
-        month: month,
-      );
+      final entries = await _getLeaderboard(circleId: circleId, month: month);
       emit(
         LeaderboardState(
           status: LeaderboardStatus.success,
