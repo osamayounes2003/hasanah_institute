@@ -5,11 +5,14 @@ import 'package:flutter/material.dart';
 
 class QuickQuestionsWheel extends StatefulWidget {
   const QuickQuestionsWheel({
+    required this.onBeforeSpin,
     required this.onSpinComplete,
     this.enabled = true,
     super.key,
   });
 
+  /// Return false to cancel the spin.
+  final bool Function() onBeforeSpin;
   final Future<void> Function() onSpinComplete;
   final bool enabled;
 
@@ -24,7 +27,7 @@ class _QuickQuestionsWheelState extends State<QuickQuestionsWheel>
   bool _spinning = false;
   double _turns = 0;
 
-  static const _spinDuration = Duration(seconds: 3);
+  static const _spinDuration = Duration(milliseconds: 1600);
   static const _segmentCount = 6;
   static const _colors = [
     Color(0xFF0F766E),
@@ -50,10 +53,11 @@ class _QuickQuestionsWheelState extends State<QuickQuestionsWheel>
 
   Future<void> _spin() async {
     if (_spinning || !widget.enabled) return;
+    if (!widget.onBeforeSpin()) return;
     setState(() => _spinning = true);
 
     final random = math.Random();
-    final extraTurns = 4 + random.nextInt(3);
+    final extraTurns = 3 + random.nextInt(2);
     final begin = _turns;
     final end = begin + extraTurns + random.nextDouble();
 

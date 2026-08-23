@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:math';
+
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../shared/domain/entities/institute_entities.dart'
@@ -150,6 +153,10 @@ class CircleSessionCubit extends Cubit<CircleSessionState> {
         period: state.honorPeriod,
         openSessionId: session?.isOpen == true ? session!.id : null,
       );
+      _syncShownFlags(
+        session?.isOpen == true ? session!.id : null,
+        questions,
+      );
       emit(
         state.copyWith(
           status: CircleSessionUiStatus.success,
@@ -173,6 +180,33 @@ class CircleSessionCubit extends Cubit<CircleSessionState> {
   }
 
   var _reportsDirty = true;
+  final _shownQuestionIds = <String>{};
+  final _random = Random();
+
+  void _syncShownFlags(String? sessionId, List<QaQuestion> questions) {
+    _shownQuestionIds.clear();
+    if (sessionId == null || sessionId.isEmpty) return;
+    for (final question in questions) {
+      if (question.wasShownIn(sessionId)) {
+        _shownQuestionIds.add(question.id);
+      }
+    }
+  }
+
+  List<QaQuestion> _unusedWheelQuestions({
+    required QuestionPool pool,
+    QuestionCategory? category,
+    required String sessionId,
+  }) {
+    return [
+      for (final question in state.questions)
+        if (question.pool == pool &&
+            (category == null || question.category == category) &&
+            !_shownQuestionIds.contains(question.id) &&
+            !question.wasShownIn(sessionId))
+          question,
+    ];
+  }
 
   Future<void> refreshPoints(String circleId) async {
     final openId =
@@ -205,6 +239,7 @@ class CircleSessionCubit extends Cubit<CircleSessionState> {
         circleId: circleId,
         teacherId: teacherId,
       );
+      _shownQuestionIds.clear();
       final reports = await listSessionReportsUseCase(circleId);
       _reportsDirty = false;
       final honor = await getHonorBoardUseCase(
@@ -419,7 +454,7 @@ class CircleSessionCubit extends Cubit<CircleSessionState> {
       final now = DateTime.now().toUtc().toIso8601String();
       await saveQuestionUseCase(
         QaQuestion(
-          id: 'q-$circleId-${now.hashCode}',
+          id: 'q-$circleId-${DateTime.now().microsecondsSinceEpoch}',
           circleId: circleId,
           question: question.trim(),
           answer: answer.trim(),
@@ -478,72 +513,90 @@ class CircleSessionCubit extends Cubit<CircleSessionState> {
     }
   }
 
-  Future<QaQuestion?> spinQuestionWheel(
-    String circleId, {
+  /// Picks the next unused question in-memory. Does not emit loading/success
+  /// so the spinning wheels are not rebuilt mid-animation.
+  ({QaQuestion? question, String? error}) drawWheelQuestion({
+    required QuestionPool pool,
     QuestionCategory? category,
-    QuestionPool pool = QuestionPool.bank,
-  }) async {
+  }) {
     final session = state.session;
     if (session == null || !session.isOpen) {
-      emit(
-        state.copyWith(
-          status: CircleSessionUiStatus.failure,
-          message: 'ابدأ الجلسة أولاً قبل تدوير العجلة.',
-        ),
-      );
-      return null;
+      return (question: null, error: 'ابدأ الجلسة أولاً قبل تدوير العجلة.');
     }
-    try {
-      final question = await pickRandomQuestionUseCase(
-        circleId,
-        category: category,
-        pool: pool,
-        sessionId: session.id,
+    final unused = _unusedWheelQuestions(
+      pool: pool,
+      category: category,
+      sessionId: session.id,
+    );
+    if (unused.isEmpty) {
+      final hasAny = state.questions.any(
+        (q) =>
+            q.pool == pool && (category == null || q.category == category),
       );
-      if (question == null) {
-        final unusedLeft = state.questions.any((q) {
-          if (q.pool != pool) return false;
-          if (category != null && q.category != category) return false;
-          return true;
-        });
-        final emptyMessage = unusedLeft
-            ? pool == QuestionPool.daily
-                  ? 'ظهرت كل الأسئلة السريعة في هذه الجلسة.'
-                  : category == null
-                  ? 'ظهرت كل أسئلة البنك العام في هذه الجلسة.'
-                  : 'ظهرت كل أسئلة «${category.label}» في هذه الجلسة.'
-            : pool == QuestionPool.daily
-            ? 'لا توجد أسئلة يومية. أضف أسئلة للعجلة السريعة أولاً.'
-            : category == null
-            ? 'لا توجد أسئلة في البنك العام.'
-            : 'لا توجد أسئلة في تصنيف «${category.label}».';
-        emit(
-          state.copyWith(
-            status: CircleSessionUiStatus.failure,
-            message: emptyMessage,
-            clearRandomQuestion: true,
-          ),
+      if (!hasAny) {
+        return (
+          question: null,
+          error: pool == QuestionPool.daily
+              ? 'لا توجد أسئلة يومية. أضف أسئلة للعجلة السريعة أولاً.'
+              : category == null
+              ? 'لا توجد أسئلة في البنك العام.'
+              : 'لا توجد أسئلة في تصنيف «${category.label}».',
         );
-        return null;
       }
-      final questions = await listQuestionsUseCase(circleId);
-      emit(
-        state.copyWith(
-          status: CircleSessionUiStatus.success,
-          randomQuestion: question,
-          questions: questions,
-        ),
+      return (
+        question: null,
+        error: pool == QuestionPool.daily
+            ? 'ظهرت كل الأسئلة السريعة في هذه الجلسة.'
+            : category == null
+            ? 'ظهرت كل أسئلة البنك العام في هذه الجلسة.'
+            : 'ظهرت كل أسئلة «${category.label}» في هذه الجلسة.',
       );
-      return question;
-    } catch (_) {
-      emit(
-        state.copyWith(
-          status: CircleSessionUiStatus.failure,
-          message: 'تعذر اختيار سؤال من العجلة.',
-        ),
-      );
-      return null;
     }
+    final picked = unused[_random.nextInt(unused.length)];
+    _shownQuestionIds.add(picked.id);
+    final marked = picked.copyWith(
+      shownSessionId: session.id,
+      askedCount: picked.askedCount + 1,
+      updatedAt: DateTime.now().toUtc().toIso8601String(),
+    );
+    unawaited(saveQuestionUseCase(marked));
+    return (question: marked, error: null);
+  }
+
+  void commitDrawnQuestion(QaQuestion marked) {
+    emit(
+      state.copyWith(
+        randomQuestion: marked,
+        questions: [
+          for (final question in state.questions)
+            if (question.id == marked.id) marked else question,
+        ],
+      ),
+    );
+  }
+
+  int remainingCount({
+    required QuestionPool pool,
+    QuestionCategory? category,
+  }) {
+    final sessionId = state.session?.id ?? '';
+    return _unusedWheelQuestions(
+      pool: pool,
+      category: category,
+      sessionId: sessionId,
+    ).length;
+  }
+
+  int totalCount({
+    required QuestionPool pool,
+    QuestionCategory? category,
+  }) {
+    return state.questions
+        .where(
+          (q) =>
+              q.pool == pool && (category == null || q.category == category),
+        )
+        .length;
   }
 
   Future<bool> saveMonthlyPlan({

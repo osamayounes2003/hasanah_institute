@@ -324,19 +324,15 @@ class FirestoreTeacherRepository implements AbstractTeacherRepository {
 
   @override
   Future<List<QaQuestion>> listQuestions(String circleId) async {
-    final key = 'questions:$circleId';
-    final cached = _cache.get<List<QaQuestion>>(key);
-    if (cached != null) return cached;
-    final snap = await getQueryPreferCache(
-      _firestore
-          .collection(FirestorePaths.qaQuestions)
-          .where('circle_id', isEqualTo: circleId),
-    );
+    final snap = await _firestore
+        .collection(FirestorePaths.qaQuestions)
+        .where('circle_id', isEqualTo: circleId)
+        .get();
     final questions = snap.docs
         .map((doc) => _questionFromMap(doc.data()))
         .toList();
     questions.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    _cache.set(key, questions);
+    _cache.set('questions:$circleId', questions);
     return questions;
   }
 

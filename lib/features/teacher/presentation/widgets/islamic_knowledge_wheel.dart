@@ -18,12 +18,15 @@ const wheelCategories = <QuestionCategory>[
 
 class IslamicKnowledgeWheel extends StatefulWidget {
   const IslamicKnowledgeWheel({
-    required this.onSpinComplete,
+    required this.chooseLanding,
+    required this.onLanded,
     this.enabled = true,
     super.key,
   });
 
-  final Future<void> Function(QuestionCategory category) onSpinComplete;
+  /// Called before the animation. Return null to cancel the spin.
+  final QuestionCategory? Function() chooseLanding;
+  final Future<void> Function(QuestionCategory category) onLanded;
   final bool enabled;
 
   @override
@@ -39,7 +42,7 @@ class _IslamicKnowledgeWheelState extends State<IslamicKnowledgeWheel>
   /// Absolute clockwise turns of the wheel (can grow forever).
   double _turns = 0;
 
-  static const _spinDuration = Duration(seconds: 3);
+  static const _spinDuration = Duration(milliseconds: 1800);
   static final int _count = wheelCategories.length;
 
   @override
@@ -80,12 +83,16 @@ class _IslamicKnowledgeWheelState extends State<IslamicKnowledgeWheel>
 
   Future<void> _spin() async {
     if (_spinning || !widget.enabled) return;
+    final landing = widget.chooseLanding();
+    if (landing == null) return;
     setState(() => _spinning = true);
 
     final random = math.Random();
-    final landingIndex = random.nextInt(_count);
-    final extraTurns = 4 + random.nextInt(3); // 4–6 full spins
-    final targetMod = _targetModForIndex(landingIndex);
+    final landingIndex = wheelCategories.indexOf(landing);
+    final extraTurns = 3 + random.nextInt(2);
+    final targetMod = _targetModForIndex(
+      landingIndex < 0 ? 0 : landingIndex,
+    );
 
     final begin = _turns;
     // Land on targetMod after at least [extraTurns] full rotations from begin.
@@ -113,7 +120,7 @@ class _IslamicKnowledgeWheelState extends State<IslamicKnowledgeWheel>
     // Category from final visual angle — always matches the pointer.
     final category = categoryUnderPointer(_turns);
     setState(() => _spinning = false);
-    await widget.onSpinComplete(category);
+    await widget.onLanded(category);
   }
 
   @override
@@ -182,26 +189,6 @@ class _IslamicKnowledgeWheelState extends State<IslamicKnowledgeWheel>
             ),
           ),
           const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            alignment: WrapAlignment.center,
-            textDirection: TextDirection.rtl,
-            children: [
-              for (final category in wheelCategories)
-                Chip(
-                  label: Text(
-                    category.label,
-                    style: const TextStyle(fontSize: 12),
-                    textDirection: TextDirection.rtl,
-                  ),
-                  backgroundColor: _FiveSegmentWheelPainter
-                      .colors[category.index]
-                      .withValues(alpha: 0.18),
-                ),
-            ],
-          ),
-          const SizedBox(height: 12),
           FilledButton.icon(
             onPressed: (_spinning || !widget.enabled) ? null : _spin,
             icon: _spinning
@@ -215,7 +202,7 @@ class _IslamicKnowledgeWheelState extends State<IslamicKnowledgeWheel>
                   )
                 : const Icon(Icons.replay_circle_filled_outlined),
             label: Text(
-              _spinning ? 'تدور العجلة...' : 'تدوير العجلة (3 ثوانٍ)',
+              _spinning ? 'تدور العجلة...' : 'تدوير عجلة المعرفة',
               textDirection: TextDirection.rtl,
             ),
           ),
