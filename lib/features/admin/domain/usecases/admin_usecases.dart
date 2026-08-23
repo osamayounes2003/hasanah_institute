@@ -27,22 +27,21 @@ class LoadAdminDashboardUseCase {
   final AbstractAdminRepository _repository;
 
   Future<AdminDashboardData> call() async {
-    final students = await _repository.listStudents();
-    final teachers = await _repository.listTeachers();
-    final circles = await _repository.listCircles();
-    final stats = await _repository.statsSnapshot();
-    final pending = await _repository.listPendingStudentRequests();
-    final members = <String, List<InstituteUser>>{};
-    for (final circle in circles) {
-      members[circle.id] = await _repository.circleStudents(circle.id);
-    }
+    final fetched = await Future.wait([
+      _repository.listStudents(),
+      _repository.listTeachers(),
+      _repository.listCircles(),
+      _repository.statsSnapshot(),
+      _repository.listPendingStudentRequests(),
+      _repository.allCircleMembers(),
+    ]);
     return AdminDashboardData(
-      students: students,
-      teachers: teachers,
-      circles: circles,
-      circleMembers: members,
-      pendingRequests: pending,
-      stats: stats,
+      students: fetched[0] as List<InstituteUser>,
+      teachers: fetched[1] as List<InstituteUser>,
+      circles: fetched[2] as List<Circle>,
+      stats: fetched[3] as List<Map<String, Object?>>,
+      pendingRequests: fetched[4] as List<StudentJoinRequest>,
+      circleMembers: fetched[5] as Map<String, List<InstituteUser>>,
     );
   }
 }

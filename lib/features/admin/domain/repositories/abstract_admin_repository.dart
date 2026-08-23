@@ -24,6 +24,8 @@ abstract interface class AbstractAdminRepository {
   });
   Future<List<InstituteUser>> circleStudents(String circleId);
 
+  Future<Map<String, List<InstituteUser>>> allCircleMembers();
+
   Future<List<Map<String, Object?>>> statsSnapshot();
 
   Future<List<StudentJoinRequest>> listPendingStudentRequests();

@@ -104,11 +104,13 @@ class PickRandomQuestionUseCase {
     String circleId, {
     QuestionCategory? category,
     QuestionPool pool = QuestionPool.bank,
+    String? sessionId,
   }) {
     return _repository.pickRandomQuestion(
       circleId,
       category: category,
       pool: pool,
+      sessionId: sessionId,
     );
   }
 }

@@ -49,6 +49,7 @@ class _BootstrapAppState extends State<BootstrapApp> {
 
       FirebaseFirestore.instance.settings = const Settings(
         persistenceEnabled: true,
+        cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
       );
 
       await FirestoreBootstrap(

@@ -237,6 +237,7 @@ class SqliteTeacherRepository implements AbstractTeacherRepository {
       'asked_count': question.askedCount,
       'correct_count': question.correctCount,
       'points': question.points,
+      'shown_session_id': question.shownSessionId,
       'created_by': question.createdBy,
       'created_at': question.createdAt,
       'updated_at': question.updatedAt,
@@ -253,11 +254,13 @@ class SqliteTeacherRepository implements AbstractTeacherRepository {
     String circleId, {
     QuestionCategory? category,
     QuestionPool pool = QuestionPool.bank,
+    String? sessionId,
   }) async {
     final questions = await listQuestions(circleId);
     final filtered = questions.where((q) {
       if (q.pool != pool) return false;
       if (category != null && q.category != category) return false;
+      if (sessionId != null && q.wasShownIn(sessionId)) return false;
       return true;
     }).toList();
     if (filtered.isEmpty) return null;
@@ -350,6 +353,7 @@ class SqliteTeacherRepository implements AbstractTeacherRepository {
       askedCount: (row['asked_count'] as num?)?.toInt() ?? 0,
       correctCount: (row['correct_count'] as num?)?.toInt() ?? 0,
       points: (row['points'] as num?)?.toInt() ?? 0,
+      shownSessionId: row['shown_session_id'] as String? ?? '',
       createdBy: row['created_by']! as String,
       createdAt: row['created_at']! as String,
       updatedAt: row['updated_at']! as String,

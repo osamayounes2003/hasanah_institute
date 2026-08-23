@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../cache/app_read_cache.dart';
 import '../../features/admin/data/repositories/firestore_admin_repository.dart';
 import '../../features/admin/domain/repositories/abstract_admin_repository.dart';
 import '../../features/admin/domain/usecases/admin_usecases.dart';
@@ -32,11 +33,13 @@ class AppDependencies {
 
   late final AuthRepository authRepository = FirestoreAuthRepository(firestore);
 
+  late final AppReadCache readCache = AppReadCache();
+
   late final AbstractAdminRepository adminRepository =
-      FirestoreAdminRepository(firestore);
+      FirestoreAdminRepository(firestore, cache: readCache);
 
   late final AbstractTeacherRepository teacherRepository =
-      FirestoreTeacherRepository(firestore);
+      FirestoreTeacherRepository(firestore, cache: readCache);
 
   late final FirestoreAnalyticsRepository _analyticsRepository =
       FirestoreAnalyticsRepository(firestore);

@@ -2,7 +2,9 @@ import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../../../core/cache/app_read_cache.dart';
 import '../../../../core/firebase/firestore_paths.dart';
+import '../../../../core/firebase/firestore_read.dart';
 import '../../../../core/utils/iso_date_time.dart';
 import '../../../../core/utils/syria_time.dart';
 import '../../../shared/domain/entities/institute_entities.dart'
@@ -12,20 +14,26 @@ import '../../domain/entities/circle_session_entities.dart';
 import '../../domain/repositories/abstract_teacher_repository.dart';
 
 class FirestoreTeacherRepository implements AbstractTeacherRepository {
-  FirestoreTeacherRepository(this._firestore);
+  FirestoreTeacherRepository(this._firestore, {AppReadCache? cache})
+    : _cache = cache ?? AppReadCache();
 
   final FirebaseFirestore _firestore;
+  final AppReadCache _cache;
 
   @override
   Future<Circle?> getCircleForTeacher(String teacherId) async {
-    final snap = await _firestore
-        .collection(FirestorePaths.circles)
-        .where('teacher_id', isEqualTo: teacherId)
-        .limit(1)
-        .get();
+    final key = 'teacherCircle:$teacherId';
+    final cached = _cache.get<Circle>(key);
+    if (cached != null) return cached;
+    final snap = await getQueryPreferCache(
+      _firestore
+          .collection(FirestorePaths.circles)
+          .where('teacher_id', isEqualTo: teacherId)
+          .limit(1),
+    );
     if (snap.docs.isEmpty) return null;
     final row = snap.docs.single.data();
-    return Circle(
+    final circle = Circle(
       id: row['id'] as String,
       name: row['name'] as String,
       teacherId: row['teacher_id'] as String,
@@ -33,38 +41,37 @@ class FirestoreTeacherRepository implements AbstractTeacherRepository {
       createdAt: DateTime.parse(row['created_at'] as String).toUtc(),
       updatedAt: DateTime.parse(row['updated_at'] as String).toUtc(),
     );
+    _cache.set(key, circle);
+    return circle;
   }
 
   @override
   Future<List<InstituteUser>> fetchCircleStudents(String circleId) async {
-    final links = await _firestore
-        .collection(FirestorePaths.circleStudents)
-        .where('circle_id', isEqualTo: circleId)
-        .get();
-    final students = <InstituteUser>[];
-    for (final link in links.docs) {
-      final studentId = link.data()['student_id'] as String;
-      final userSnap = await _firestore
-          .collection(FirestorePaths.users)
-          .doc(studentId)
-          .get();
-      final data = userSnap.data();
-      if (data == null || data['role'] != 'student') continue;
-      students.add(_userFromMap(data));
-    }
-    students.sort((a, b) => a.name.compareTo(b.name));
+    final key = 'students:$circleId';
+    final cached = _cache.get<List<InstituteUser>>(key);
+    if (cached != null) return cached;
+    final links = await getQueryPreferCache(
+      _firestore
+          .collection(FirestorePaths.circleStudents)
+          .where('circle_id', isEqualTo: circleId),
+    );
+    final ids = [
+      for (final link in links.docs) link.data()['student_id'] as String,
+    ];
+    final users = await _usersByIds(ids);
+    final students = [
+      for (final user in users)
+        if (user.role == UserRole.student) user,
+    ]..sort((a, b) => a.name.compareTo(b.name));
+    _cache.set(key, students);
     return students;
   }
 
   @override
   Future<TeachingSession?> getOpenSession(String circleId) async {
-    final snap = await _firestore
-        .collection(FirestorePaths.teachingSessions)
-        .where('circle_id', isEqualTo: circleId)
-        .get();
-    for (final doc in snap.docs) {
-      final data = doc.data();
-      if (data['status'] == 'open') return _sessionFromMap(data);
+    final sessions = await _sessions(circleId);
+    for (final session in sessions) {
+      if (session.isOpen) return session;
     }
     return null;
   }
@@ -74,13 +81,9 @@ class FirestoreTeacherRepository implements AbstractTeacherRepository {
     required String circleId,
     required String sessionDate,
   }) async {
-    final snap = await _firestore
-        .collection(FirestorePaths.teachingSessions)
-        .where('circle_id', isEqualTo: circleId)
-        .get();
-    for (final doc in snap.docs) {
-      final data = doc.data();
-      if (data['session_date'] == sessionDate) return _sessionFromMap(data);
+    final sessions = await _sessions(circleId);
+    for (final session in sessions) {
+      if (session.sessionDate == sessionDate) return session;
     }
     return null;
   }
@@ -109,6 +112,9 @@ class FirestoreTeacherRepository implements AbstractTeacherRepository {
       lessonTitle: '',
       successRate: 0,
     );
+    _cache.invalidate('sessions:$circleId');
+    _cache.invalidatePrefix('reports:$circleId');
+    _cache.invalidatePrefix('honor:$circleId');
     await _firestore
         .collection(FirestorePaths.teachingSessions)
         .doc(session.id)
@@ -141,6 +147,8 @@ class FirestoreTeacherRepository implements AbstractTeacherRepository {
     final startDate = startedAt.length >= 10
         ? startedAt.substring(0, 10)
         : startedAt;
+    _cache.invalidatePrefix('sessions:');
+    _cache.invalidatePrefix('reports:');
     await _firestore.collection(FirestorePaths.teachingSessions).doc(sessionId).set(
       {
         'lesson_title': lessonTitle.trim(),
@@ -156,46 +164,39 @@ class FirestoreTeacherRepository implements AbstractTeacherRepository {
 
   @override
   Future<List<SessionReport>> listSessionReports(String circleId) async {
-    final sessionsSnap = await _firestore
-        .collection(FirestorePaths.teachingSessions)
-        .where('circle_id', isEqualTo: circleId)
-        .get();
-    final sessions = sessionsSnap.docs.map((d) => _sessionFromMap(d.data())).toList()
-      ..sort((a, b) => b.startedAt.compareTo(a.startedAt));
+    final key = 'reports:$circleId';
+    final cached = _cache.get<List<SessionReport>>(key);
+    if (cached != null) return cached;
 
-    final attendanceSnap = await _firestore
-        .collection(FirestorePaths.attendance)
-        .where('circle_id', isEqualTo: circleId)
-        .get();
-    final pointsSnap = await _firestore
-        .collection(FirestorePaths.pointLedger)
-        .where('circle_id', isEqualTo: circleId)
-        .get();
+    final fetched = await Future.wait([
+      _sessions(circleId),
+      _attendanceMaps(circleId),
+      _pointMaps(circleId),
+    ]);
+    final sessions = fetched[0] as List<TeachingSession>;
+    final attendance = fetched[1] as List<Map<String, dynamic>>;
+    final points = fetched[2] as List<Map<String, dynamic>>;
 
-    final nameCache = <String, String>{};
-    Future<String> nameOf(String studentId) async {
-      if (nameCache.containsKey(studentId)) return nameCache[studentId]!;
-      final snap = await _firestore
-          .collection(FirestorePaths.users)
-          .doc(studentId)
-          .get();
-      final name = snap.data()?['name'] as String? ?? studentId;
-      nameCache[studentId] = name;
-      return name;
-    }
+    final nameIds = <String>{
+      for (final row in attendance) row['student_id'] as String,
+      for (final row in points) row['student_id'] as String,
+    };
+    final users = {
+      for (final user in await _usersByIds(nameIds)) user.id: user,
+    };
+    String nameOf(String studentId) => users[studentId]?.name ?? studentId;
 
     final reports = <SessionReport>[];
     for (final session in sessions) {
       final attendees = <SessionAttendee>[];
-      for (final doc in attendanceSnap.docs) {
-        final data = doc.data();
+      for (final data in attendance) {
         if (data['session_id'] != session.id) continue;
         final studentId = data['student_id'] as String;
         final statusName = data['status'] as String? ?? 'absent';
         attendees.add(
           SessionAttendee(
             studentId: studentId,
-            studentName: await nameOf(studentId),
+            studentName: nameOf(studentId),
             status: AttendanceStatus.values.byName(statusName),
           ),
         );
@@ -203,15 +204,14 @@ class FirestoreTeacherRepository implements AbstractTeacherRepository {
       attendees.sort((a, b) => a.studentName.compareTo(b.studentName));
 
       final awards = <SessionPointAward>[];
-      for (final doc in pointsSnap.docs) {
-        final data = doc.data();
+      for (final data in points) {
         if (data['session_id'] != session.id) continue;
         final studentId = data['student_id'] as String;
         final reasonName = data['reason'] as String? ?? 'award';
         awards.add(
           SessionPointAward(
             studentId: studentId,
-            studentName: await nameOf(studentId),
+            studentName: nameOf(studentId),
             points: (data['points'] as num).toInt(),
             reason: PointReason.values.byName(reasonName),
             note: data['note'] as String?,
@@ -228,6 +228,7 @@ class FirestoreTeacherRepository implements AbstractTeacherRepository {
         ),
       );
     }
+    _cache.set(key, reports);
     return reports;
   }
 
@@ -239,6 +240,9 @@ class FirestoreTeacherRepository implements AbstractTeacherRepository {
     final snap = await ref.get();
     if (!snap.exists) throw StateError('الجلسة غير موجودة.');
     final now = SyriaTime.dateTimeString();
+    _cache.invalidatePrefix('sessions:');
+    _cache.invalidatePrefix('reports:');
+    _cache.invalidatePrefix('honor:');
     await ref.update({
       'status': TeachingSessionStatus.closed.name,
       'ended_at': now,
@@ -292,11 +296,18 @@ class FirestoreTeacherRepository implements AbstractTeacherRepository {
         );
       }
     }
+    _cache.invalidate('points:${session.circleId}');
+    _cache.invalidate('attendance:${session.circleId}');
+    _cache.invalidate('reports:${session.circleId}');
+    _cache.invalidatePrefix('honor:${session.circleId}');
     await batch.commit();
   }
 
   @override
   Future<void> awardPoints(PointEntry entry) {
+    _cache.invalidate('points:${entry.circleId}');
+    _cache.invalidate('reports:${entry.circleId}');
+    _cache.invalidatePrefix('honor:${entry.circleId}');
     return _firestore.collection(FirestorePaths.pointLedger).doc(entry.id).set({
       'id': entry.id,
       'student_id': entry.studentId,
@@ -312,19 +323,25 @@ class FirestoreTeacherRepository implements AbstractTeacherRepository {
 
   @override
   Future<List<QaQuestion>> listQuestions(String circleId) async {
-    final snap = await _firestore
-        .collection(FirestorePaths.qaQuestions)
-        .where('circle_id', isEqualTo: circleId)
-        .get();
+    final key = 'questions:$circleId';
+    final cached = _cache.get<List<QaQuestion>>(key);
+    if (cached != null) return cached;
+    final snap = await getQueryPreferCache(
+      _firestore
+          .collection(FirestorePaths.qaQuestions)
+          .where('circle_id', isEqualTo: circleId),
+    );
     final questions = snap.docs
         .map((doc) => _questionFromMap(doc.data()))
         .toList();
     questions.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    _cache.set(key, questions);
     return questions;
   }
 
   @override
   Future<void> saveQuestion(QaQuestion question) {
+    _upsertCachedQuestion(question);
     return _firestore
         .collection(FirestorePaths.qaQuestions)
         .doc(question.id)
@@ -339,6 +356,7 @@ class FirestoreTeacherRepository implements AbstractTeacherRepository {
           'asked_count': question.askedCount,
           'correct_count': question.correctCount,
           'points': question.points,
+          'shown_session_id': question.shownSessionId,
           'created_by': question.createdBy,
           'created_at': question.createdAt,
           'updated_at': question.updatedAt,
@@ -347,6 +365,7 @@ class FirestoreTeacherRepository implements AbstractTeacherRepository {
 
   @override
   Future<void> deleteQuestion(String questionId) {
+    _cache.invalidatePrefix('questions:');
     return _firestore
         .collection(FirestorePaths.qaQuestions)
         .doc(questionId)
@@ -358,15 +377,25 @@ class FirestoreTeacherRepository implements AbstractTeacherRepository {
     String circleId, {
     QuestionCategory? category,
     QuestionPool pool = QuestionPool.bank,
+    String? sessionId,
   }) async {
     final questions = await listQuestions(circleId);
     final filtered = questions.where((q) {
       if (q.pool != pool) return false;
       if (category != null && q.category != category) return false;
+      if (sessionId != null && q.wasShownIn(sessionId)) return false;
       return true;
     }).toList();
     if (filtered.isEmpty) return null;
-    return filtered[Random().nextInt(filtered.length)];
+    final picked = filtered[Random().nextInt(filtered.length)];
+    if (sessionId == null || sessionId.isEmpty) return picked;
+    final marked = picked.copyWith(
+      shownSessionId: sessionId,
+      askedCount: picked.askedCount + 1,
+      updatedAt: DateTime.now().toUtc().toIso8601String(),
+    );
+    await saveQuestion(marked);
+    return marked;
   }
 
   @override
@@ -375,6 +404,7 @@ class FirestoreTeacherRepository implements AbstractTeacherRepository {
         .where((q) => q.pool == QuestionPool.daily)
         .toList();
     if (daily.isEmpty) return 0;
+    _cache.invalidate('questions:$circleId');
     final now = DateTime.now().toUtc().toIso8601String();
     final batch = _firestore.batch();
     for (final question in daily) {
@@ -424,8 +454,10 @@ class FirestoreTeacherRepository implements AbstractTeacherRepository {
         'created_at': createdAt,
       },
     );
+    _cache.invalidate('students:$circleId');
+    _cache.invalidatePrefix('admin:');
     await batch.commit();
-    return InstituteUser(
+    final student = InstituteUser(
       id: studentId,
       name: studentName.trim(),
       role: UserRole.student,
@@ -433,6 +465,8 @@ class FirestoreTeacherRepository implements AbstractTeacherRepository {
       updatedAt: now,
       totalPoints: 0,
     );
+    _cache.set('user:$studentId', student);
+    return student;
   }
 
   @override
@@ -441,18 +475,19 @@ class FirestoreTeacherRepository implements AbstractTeacherRepository {
     required HonorPeriod period,
     String? openSessionId,
   }) async {
+    final key = 'honor:$circleId:${period.name}:${openSessionId ?? ''}';
+    final cached = _cache.get<List<HonorEntry>>(key);
+    if (cached != null) return cached;
+
     final students = await fetchCircleStudents(circleId);
-    final pointsSnap = await _firestore
-        .collection(FirestorePaths.pointLedger)
-        .where('circle_id', isEqualTo: circleId)
-        .get();
+    final pointRows = await _pointMaps(circleId);
 
     final totals = <String, int>{for (final student in students) student.id: 0};
 
     if (period == HonorPeriod.daily) {
       // Daily board = points of the currently open session only.
       if (openSessionId == null || openSessionId.isEmpty) {
-        return [
+        final empty = [
           for (var index = 0; index < students.length; index++)
             HonorEntry(
               studentId: students[index].id,
@@ -462,9 +497,10 @@ class FirestoreTeacherRepository implements AbstractTeacherRepository {
               isChampion: false,
             ),
         ];
+        _cache.set(key, empty);
+        return empty;
       }
-      for (final doc in pointsSnap.docs) {
-        final data = doc.data();
+      for (final data in pointRows) {
         if (data['session_id'] != openSessionId) continue;
         final studentId = data['student_id'] as String;
         final points = (data['points'] as num).toInt();
@@ -473,8 +509,7 @@ class FirestoreTeacherRepository implements AbstractTeacherRepository {
     } else {
       // Weekly / monthly = cumulative points from all sessions in the period.
       final bounds = _periodBounds(period);
-      for (final doc in pointsSnap.docs) {
-        final data = doc.data();
+      for (final data in pointRows) {
         final awardedAt = data['awarded_at'] as String? ?? '';
         if (!_awardedInSyriaPeriod(awardedAt, bounds.$1, bounds.$2)) {
           continue;
@@ -495,7 +530,7 @@ class FirestoreTeacherRepository implements AbstractTeacherRepository {
           return a.student.name.compareTo(b.student.name);
         });
 
-    return [
+    final honor = [
       for (var index = 0; index < ranked.length; index++)
         HonorEntry(
           studentId: ranked[index].student.id,
@@ -508,18 +543,26 @@ class FirestoreTeacherRepository implements AbstractTeacherRepository {
               ranked[index].total > 0,
         ),
     ];
+    _cache.set(key, honor);
+    return honor;
   }
 
   @override
   Future<List<MonthlyPlan>> listMonthlyPlans(String circleId) async {
+    final key = 'plans:$circleId';
+    final cached = _cache.get<List<MonthlyPlan>>(key);
+    if (cached != null) return cached;
     QuerySnapshot<Map<String, dynamic>> snap;
     try {
-      snap = await _firestore
-          .collection(FirestorePaths.monthlyPlans)
-          .where('circle_id', isEqualTo: circleId)
-          .get();
+      snap = await getQueryPreferCache(
+        _firestore
+            .collection(FirestorePaths.monthlyPlans)
+            .where('circle_id', isEqualTo: circleId),
+      );
     } catch (_) {
-      snap = await _firestore.collection(FirestorePaths.monthlyPlans).get();
+      snap = await getQueryPreferCache(
+        _firestore.collection(FirestorePaths.monthlyPlans),
+      );
     }
     final plans = snap.docs
         .map((d) => d.data())
@@ -527,11 +570,13 @@ class FirestoreTeacherRepository implements AbstractTeacherRepository {
         .map(_planFromMap)
         .toList();
     plans.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    _cache.set(key, plans);
     return plans;
   }
 
   @override
   Future<void> saveMonthlyPlan(MonthlyPlan plan) async {
+    _cache.invalidate('plans:${plan.circleId}');
     await _firestore.collection(FirestorePaths.monthlyPlans).doc(plan.id).set({
       'id': plan.id,
       'circle_id': plan.circleId,
@@ -549,18 +594,15 @@ class FirestoreTeacherRepository implements AbstractTeacherRepository {
 
   @override
   Future<void> deleteMonthlyPlan(String planId) {
+    _cache.invalidatePrefix('plans:');
     return _firestore.collection(FirestorePaths.monthlyPlans).doc(planId).delete();
   }
 
   @override
   Future<Map<String, int>> studentPointsMap(String circleId) async {
-    final snap = await _firestore
-        .collection(FirestorePaths.pointLedger)
-        .where('circle_id', isEqualTo: circleId)
-        .get();
+    final rows = await _pointMaps(circleId);
     final totals = <String, int>{};
-    for (final doc in snap.docs) {
-      final data = doc.data();
+    for (final data in rows) {
       final studentId = data['student_id'] as String;
       totals[studentId] =
           (totals[studentId] ?? 0) + (data['points'] as num).toInt();
@@ -573,6 +615,9 @@ class FirestoreTeacherRepository implements AbstractTeacherRepository {
     required String circleId,
     required String studentId,
   }) {
+    _cache.invalidate('students:$circleId');
+    _cache.invalidatePrefix('honor:$circleId');
+    _cache.invalidatePrefix('admin:');
     return _firestore
         .collection(FirestorePaths.circleStudents)
         .doc('${circleId}_$studentId')
@@ -612,6 +657,91 @@ class FirestoreTeacherRepository implements AbstractTeacherRepository {
         .toList()
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
     return list;
+  }
+
+  void _upsertCachedQuestion(QaQuestion question) {
+    final key = 'questions:${question.circleId}';
+    final current = _cache.get<List<QaQuestion>>(key);
+    if (current == null) return;
+    final next = <QaQuestion>[
+      for (final item in current)
+        if (item.id == question.id) question else item,
+    ];
+    if (!next.any((item) => item.id == question.id)) {
+      next.insert(0, question);
+    }
+    _cache.set(key, next);
+  }
+
+  Future<List<InstituteUser>> _usersByIds(Iterable<String> ids) async {
+    final unique = ids.where((id) => id.isNotEmpty).toSet().toList();
+    final found = <String, InstituteUser>{};
+    final missing = <String>[];
+    for (final id in unique) {
+      final hit = _cache.get<InstituteUser>('user:$id');
+      if (hit != null) {
+        found[id] = hit;
+      } else {
+        missing.add(id);
+      }
+    }
+    if (missing.isNotEmpty) {
+      final snaps = await Future.wait([
+        for (final id in missing)
+          _firestore.collection(FirestorePaths.users).doc(id).get(),
+      ]);
+      for (final snap in snaps) {
+        final data = snap.data();
+        if (data == null) continue;
+        final user = _userFromMap(data);
+        _cache.set('user:${user.id}', user);
+        found[user.id] = user;
+      }
+    }
+    return [for (final id in unique) if (found[id] != null) found[id]!];
+  }
+
+  Future<List<TeachingSession>> _sessions(String circleId) async {
+    final key = 'sessions:$circleId';
+    final cached = _cache.get<List<TeachingSession>>(key);
+    if (cached != null) return cached;
+    final snap = await getQueryPreferCache(
+      _firestore
+          .collection(FirestorePaths.teachingSessions)
+          .where('circle_id', isEqualTo: circleId),
+    );
+    final sessions = snap.docs.map((d) => _sessionFromMap(d.data())).toList()
+      ..sort((a, b) => b.startedAt.compareTo(a.startedAt));
+    _cache.set(key, sessions);
+    return sessions;
+  }
+
+  Future<List<Map<String, dynamic>>> _pointMaps(String circleId) async {
+    final key = 'points:$circleId';
+    final cached = _cache.get<List<Map<String, dynamic>>>(key);
+    if (cached != null) return cached;
+    final snap = await getQueryPreferCache(
+      _firestore
+          .collection(FirestorePaths.pointLedger)
+          .where('circle_id', isEqualTo: circleId),
+    );
+    final rows = [for (final doc in snap.docs) doc.data()];
+    _cache.set(key, rows);
+    return rows;
+  }
+
+  Future<List<Map<String, dynamic>>> _attendanceMaps(String circleId) async {
+    final key = 'attendance:$circleId';
+    final cached = _cache.get<List<Map<String, dynamic>>>(key);
+    if (cached != null) return cached;
+    final snap = await getQueryPreferCache(
+      _firestore
+          .collection(FirestorePaths.attendance)
+          .where('circle_id', isEqualTo: circleId),
+    );
+    final rows = [for (final doc in snap.docs) doc.data()];
+    _cache.set(key, rows);
+    return rows;
   }
 
   StudentJoinRequest _requestFromMap(Map<String, dynamic> row) {
@@ -717,6 +847,7 @@ class FirestoreTeacherRepository implements AbstractTeacherRepository {
       askedCount: (row['asked_count'] as num?)?.toInt() ?? 0,
       correctCount: (row['correct_count'] as num?)?.toInt() ?? 0,
       points: (row['points'] as num?)?.toInt() ?? 0,
+      shownSessionId: row['shown_session_id'] as String? ?? '',
       createdBy: row['created_by'] as String,
       createdAt: row['created_at'] as String,
       updatedAt: row['updated_at'] as String,

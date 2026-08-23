@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:awesome_dialog/awesome_dialog.dart';
 import 'package:flutter/material.dart';
 
@@ -6,14 +8,18 @@ import '../theme/app_theme.dart';
 /// Unified Awesome Dialogs for every in-app request (loading / success / error).
 abstract final class HasanahRequestDialog {
   static bool _loadingOpen = false;
+  static Timer? _showTimer;
 
   static void showLoading(
     BuildContext context, {
     String message = 'جارٍ تنفيذ الطلب...',
   }) {
-    if (_loadingOpen || !context.mounted) return;
-    _loadingOpen = true;
-    AwesomeDialog(
+    if (_loadingOpen || _showTimer != null || !context.mounted) return;
+    _showTimer = Timer(const Duration(milliseconds: 280), () {
+      _showTimer = null;
+      if (!context.mounted || _loadingOpen) return;
+      _loadingOpen = true;
+      AwesomeDialog(
       context: context,
       dialogType: DialogType.noHeader,
       animType: AnimType.scale,
@@ -38,10 +44,13 @@ abstract final class HasanahRequestDialog {
           ],
         ),
       ),
-    ).show().whenComplete(() => _loadingOpen = false);
+      ).show().whenComplete(() => _loadingOpen = false);
+    });
   }
 
   static void hide(BuildContext context) {
+    _showTimer?.cancel();
+    _showTimer = null;
     if (!_loadingOpen) return;
     final navigator = Navigator.of(context, rootNavigator: true);
     if (navigator.canPop()) navigator.pop();

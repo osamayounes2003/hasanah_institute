@@ -7,13 +7,28 @@ import '../../../shared/domain/entities/institute_entities.dart';
 import '../../domain/entities/circle_session_entities.dart';
 import '../cubit/circle_session_cubit.dart';
 
-class SessionsManagementTab extends StatelessWidget {
+class SessionsManagementTab extends StatefulWidget {
   const SessionsManagementTab({required this.circleId, super.key});
 
   final String circleId;
 
   @override
+  State<SessionsManagementTab> createState() => _SessionsManagementTabState();
+}
+
+class _SessionsManagementTabState extends State<SessionsManagementTab> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.read<CircleSessionCubit>().ensureSessionReports(widget.circleId);
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final circleId = widget.circleId;
     return BlocBuilder<CircleSessionCubit, CircleSessionState>(
       builder: (context, state) {
         final reports = state.sessionReports;

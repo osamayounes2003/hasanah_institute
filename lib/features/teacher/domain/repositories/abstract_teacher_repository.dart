@@ -50,6 +50,7 @@ abstract interface class AbstractTeacherRepository {
     String circleId, {
     QuestionCategory? category,
     QuestionPool pool = QuestionPool.bank,
+    String? sessionId,
   });
 
   Future<int> promoteDailyQuestionsToBank(String circleId);

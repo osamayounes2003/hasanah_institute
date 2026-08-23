@@ -180,6 +180,7 @@ class QaQuestion {
     this.askedCount = 0,
     this.correctCount = 0,
     this.points = 0,
+    this.shownSessionId = '',
   });
 
   final String id;
@@ -191,9 +192,15 @@ class QaQuestion {
   final int askedCount;
   final int correctCount;
   final int points;
+  /// Session id/flag: when it matches the open session, the question
+  /// already appeared on the wheel in that session.
+  final String shownSessionId;
   final String createdBy;
   final String createdAt;
   final String updatedAt;
+
+  bool wasShownIn(String sessionId) =>
+      sessionId.isNotEmpty && shownSessionId == sessionId;
 
   QaQuestion copyWith({
     String? id,
@@ -205,6 +212,7 @@ class QaQuestion {
     int? askedCount,
     int? correctCount,
     int? points,
+    String? shownSessionId,
     String? createdBy,
     String? createdAt,
     String? updatedAt,
@@ -219,6 +227,7 @@ class QaQuestion {
       askedCount: askedCount ?? this.askedCount,
       correctCount: correctCount ?? this.correctCount,
       points: points ?? this.points,
+      shownSessionId: shownSessionId ?? this.shownSessionId,
       createdBy: createdBy ?? this.createdBy,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,

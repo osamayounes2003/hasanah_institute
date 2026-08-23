@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'firestore_paths.dart';
+import 'firestore_read.dart';
 
 class FirestoreBootstrap {
   FirestoreBootstrap(this._firestore);
@@ -9,6 +10,11 @@ class FirestoreBootstrap {
 
   /// Ensures baseline admin and sample records exist.
   Future<void> ensureSeedData() async {
+    final admin = await getDocPreferCache(
+      _firestore.collection(FirestorePaths.users).doc('admin'),
+    );
+    if (admin.exists) return;
+
     final now = DateTime.now().toUtc().toIso8601String();
     final batch = _firestore.batch();
 
@@ -140,6 +146,7 @@ class FirestoreBootstrap {
         'asked_count': 0,
         'correct_count': 0,
         'points': 0,
+        'shown_session_id': '',
         'created_by': 'teacher-1',
         'created_at': now,
         'updated_at': now,

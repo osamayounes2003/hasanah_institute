@@ -133,12 +133,18 @@ class CircleSessionCubit extends Cubit<CircleSessionState> {
       state.copyWith(status: CircleSessionUiStatus.loading, clearMessage: true),
     );
     try {
-      final students = await loadCircleStudentsUseCase(circleId);
-      final session = await getOpenSessionUseCase(circleId);
-      final questions = await listQuestionsUseCase(circleId);
-      final plans = await listMonthlyPlansUseCase(circleId);
-      final points = await studentPointsMapUseCase(circleId);
-      final reports = await listSessionReportsUseCase(circleId);
+      final fetched = await Future.wait([
+        loadCircleStudentsUseCase(circleId),
+        getOpenSessionUseCase(circleId),
+        listQuestionsUseCase(circleId),
+        listMonthlyPlansUseCase(circleId),
+        studentPointsMapUseCase(circleId),
+      ]);
+      final students = fetched[0] as List<InstituteUser>;
+      final session = fetched[1] as TeachingSession?;
+      final questions = fetched[2] as List<QaQuestion>;
+      final plans = fetched[3] as List<MonthlyPlan>;
+      final points = fetched[4] as Map<String, int>;
       final honor = await getHonorBoardUseCase(
         circleId: circleId,
         period: state.honorPeriod,
@@ -153,7 +159,6 @@ class CircleSessionCubit extends Cubit<CircleSessionState> {
           clearSession: session == null,
           questions: questions,
           monthlyPlans: plans,
-          sessionReports: reports,
           honorBoard: honor,
         ),
       );
@@ -167,16 +172,25 @@ class CircleSessionCubit extends Cubit<CircleSessionState> {
     }
   }
 
+  var _reportsDirty = true;
+
   Future<void> refreshPoints(String circleId) async {
-    final points = await studentPointsMapUseCase(circleId);
     final openId =
         state.session?.isOpen == true ? state.session!.id : null;
-    final honor = await getHonorBoardUseCase(
-      circleId: circleId,
-      period: state.honorPeriod,
-      openSessionId: openId,
+    final fetched = await Future.wait([
+      studentPointsMapUseCase(circleId),
+      getHonorBoardUseCase(
+        circleId: circleId,
+        period: state.honorPeriod,
+        openSessionId: openId,
+      ),
+    ]);
+    emit(
+      state.copyWith(
+        studentPoints: fetched[0] as Map<String, int>,
+        honorBoard: fetched[1] as List<HonorEntry>,
+      ),
     );
-    emit(state.copyWith(studentPoints: points, honorBoard: honor));
   }
 
   Future<void> startSession({
@@ -192,6 +206,7 @@ class CircleSessionCubit extends Cubit<CircleSessionState> {
         teacherId: teacherId,
       );
       final reports = await listSessionReportsUseCase(circleId);
+      _reportsDirty = false;
       final honor = await getHonorBoardUseCase(
         circleId: circleId,
         period: state.honorPeriod,
@@ -232,6 +247,7 @@ class CircleSessionCubit extends Cubit<CircleSessionState> {
     try {
       final closed = await endTeachingSessionUseCase(session.id);
       final reports = await listSessionReportsUseCase(closed.circleId);
+      _reportsDirty = false;
       final honor = await getHonorBoardUseCase(
         circleId: closed.circleId,
         period: state.honorPeriod,
@@ -292,12 +308,11 @@ class CircleSessionCubit extends Cubit<CircleSessionState> {
           ),
       ];
       await saveDailyAttendanceUseCase(session: session, records: records);
+      _reportsDirty = true;
       await refreshPoints(circleId);
-      final reports = await listSessionReportsUseCase(circleId);
       emit(
         state.copyWith(
           status: CircleSessionUiStatus.success,
-          sessionReports: reports,
           message: 'تم حفظ الحضور واحتساب نقاط الحاضرين.',
         ),
       );
@@ -362,12 +377,11 @@ class CircleSessionCubit extends Cubit<CircleSessionState> {
           createdAt: now,
         ),
       );
+      _reportsDirty = true;
       await refreshPoints(circleId);
-      final reports = await listSessionReportsUseCase(circleId);
       emit(
         state.copyWith(
           status: CircleSessionUiStatus.success,
-          sessionReports: reports,
           message: 'تم إسناد $points نقطة.',
         ),
       );
@@ -414,6 +428,7 @@ class CircleSessionCubit extends Cubit<CircleSessionState> {
           askedCount: 0,
           correctCount: 0,
           points: 0,
+          shownSessionId: '',
           createdBy: teacherId,
           createdAt: now,
           updatedAt: now,
@@ -468,6 +483,16 @@ class CircleSessionCubit extends Cubit<CircleSessionState> {
     QuestionCategory? category,
     QuestionPool pool = QuestionPool.bank,
   }) async {
+    final session = state.session;
+    if (session == null || !session.isOpen) {
+      emit(
+        state.copyWith(
+          status: CircleSessionUiStatus.failure,
+          message: 'ابدأ الجلسة أولاً قبل تدوير العجلة.',
+        ),
+      );
+      return null;
+    }
     emit(
       state.copyWith(status: CircleSessionUiStatus.loading, clearMessage: true),
     );
@@ -476,9 +501,21 @@ class CircleSessionCubit extends Cubit<CircleSessionState> {
         circleId,
         category: category,
         pool: pool,
+        sessionId: session.id,
       );
       if (question == null) {
-        final emptyMessage = pool == QuestionPool.daily
+        final unusedLeft = state.questions.any((q) {
+          if (q.pool != pool) return false;
+          if (category != null && q.category != category) return false;
+          return true;
+        });
+        final emptyMessage = unusedLeft
+            ? pool == QuestionPool.daily
+                  ? 'ظهرت كل الأسئلة السريعة في هذه الجلسة.'
+                  : category == null
+                  ? 'ظهرت كل أسئلة البنك العام في هذه الجلسة.'
+                  : 'ظهرت كل أسئلة «${category.label}» في هذه الجلسة.'
+            : pool == QuestionPool.daily
             ? 'لا توجد أسئلة يومية. أضف أسئلة للعجلة السريعة أولاً.'
             : category == null
             ? 'لا توجد أسئلة في البنك العام.'
@@ -492,10 +529,12 @@ class CircleSessionCubit extends Cubit<CircleSessionState> {
         );
         return null;
       }
+      final questions = await listQuestionsUseCase(circleId);
       emit(
         state.copyWith(
           status: CircleSessionUiStatus.success,
           randomQuestion: question,
+          questions: questions,
         ),
       );
       return question;
@@ -684,6 +723,7 @@ class CircleSessionCubit extends Cubit<CircleSessionState> {
   Future<void> loadSessionReports(String circleId) async {
     try {
       final reports = await listSessionReportsUseCase(circleId);
+      _reportsDirty = false;
       emit(state.copyWith(sessionReports: reports));
     } catch (_) {
       emit(
@@ -693,6 +733,11 @@ class CircleSessionCubit extends Cubit<CircleSessionState> {
         ),
       );
     }
+  }
+
+  Future<void> ensureSessionReports(String circleId) async {
+    if (!_reportsDirty && state.sessionReports.isNotEmpty) return;
+    await loadSessionReports(circleId);
   }
 
   Future<void> updateSessionMeta({

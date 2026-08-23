@@ -1,28 +1,48 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../../../core/cache/app_read_cache.dart';
 import '../../../../core/firebase/firestore_paths.dart';
+import '../../../../core/firebase/firestore_read.dart';
 import '../../../shared/domain/entities/institute_entities.dart';
 import '../../../teacher/domain/entities/circle_session_entities.dart';
 import '../../domain/repositories/abstract_admin_repository.dart';
 
 class FirestoreAdminRepository implements AbstractAdminRepository {
-  FirestoreAdminRepository(this._firestore);
+  FirestoreAdminRepository(this._firestore, {AppReadCache? cache})
+    : _cache = cache ?? AppReadCache();
 
   final FirebaseFirestore _firestore;
+  final AppReadCache _cache;
+
+  void _invalidateAdmin() {
+    _cache.invalidatePrefix('admin:');
+    _cache.invalidatePrefix('user:');
+    _cache.invalidatePrefix('students:');
+    _cache.invalidatePrefix('teacherCircle:');
+  }
 
   @override
   Future<List<InstituteUser>> listStudents() async {
-    final snap = await _firestore
-        .collection(FirestorePaths.users)
-        .where('role', isEqualTo: 'student')
-        .get();
+    const key = 'admin:students';
+    final cached = _cache.get<List<InstituteUser>>(key);
+    if (cached != null) return cached;
+    final snap = await getQueryPreferCache(
+      _firestore
+          .collection(FirestorePaths.users)
+          .where('role', isEqualTo: 'student'),
+    );
     final list = snap.docs.map((d) => _userFromMap(d.data())).toList();
     list.sort((a, b) => a.name.compareTo(b.name));
+    for (final student in list) {
+      _cache.set('user:${student.id}', student);
+    }
+    _cache.set(key, list);
     return list;
   }
 
   @override
   Future<void> saveStudent(InstituteUser student) {
+    _invalidateAdmin();
     return _firestore.collection(FirestorePaths.users).doc(student.id).set({
       'id': student.id,
       'name': student.name,
@@ -38,6 +58,7 @@ class FirestoreAdminRepository implements AbstractAdminRepository {
 
   @override
   Future<void> deleteStudent(String studentId) async {
+    _invalidateAdmin();
     final batch = _firestore.batch();
     batch.delete(_firestore.collection(FirestorePaths.users).doc(studentId));
     final links = await _firestore
@@ -52,17 +73,26 @@ class FirestoreAdminRepository implements AbstractAdminRepository {
 
   @override
   Future<List<InstituteUser>> listTeachers() async {
-    final snap = await _firestore
-        .collection(FirestorePaths.users)
-        .where('role', isEqualTo: 'teacher')
-        .get();
+    const key = 'admin:teachers';
+    final cached = _cache.get<List<InstituteUser>>(key);
+    if (cached != null) return cached;
+    final snap = await getQueryPreferCache(
+      _firestore
+          .collection(FirestorePaths.users)
+          .where('role', isEqualTo: 'teacher'),
+    );
     final list = snap.docs.map((d) => _userFromMap(d.data())).toList();
     list.sort((a, b) => a.name.compareTo(b.name));
+    for (final teacher in list) {
+      _cache.set('user:${teacher.id}', teacher);
+    }
+    _cache.set(key, list);
     return list;
   }
 
   @override
   Future<void> saveTeacher(InstituteUser teacher) {
+    _invalidateAdmin();
     return _firestore.collection(FirestorePaths.users).doc(teacher.id).set({
       'id': teacher.id,
       'name': teacher.name,
@@ -76,12 +106,18 @@ class FirestoreAdminRepository implements AbstractAdminRepository {
 
   @override
   Future<void> deleteTeacher(String teacherId) async {
+    _invalidateAdmin();
     await _firestore.collection(FirestorePaths.users).doc(teacherId).delete();
   }
 
   @override
   Future<List<Circle>> listCircles() async {
-    final snap = await _firestore.collection(FirestorePaths.circles).get();
+    const key = 'admin:circles';
+    final cached = _cache.get<List<Circle>>(key);
+    if (cached != null) return cached;
+    final snap = await getQueryPreferCache(
+      _firestore.collection(FirestorePaths.circles),
+    );
     final teachers = {for (final t in await listTeachers()) t.id: t.name};
     final list = snap.docs.map((doc) {
       final data = doc.data();
@@ -96,11 +132,13 @@ class FirestoreAdminRepository implements AbstractAdminRepository {
       );
     }).toList();
     list.sort((a, b) => a.name.compareTo(b.name));
+    _cache.set(key, list);
     return list;
   }
 
   @override
   Future<void> saveCircle(Circle circle) {
+    _invalidateAdmin();
     return _firestore.collection(FirestorePaths.circles).doc(circle.id).set({
       'id': circle.id,
       'name': circle.name,
@@ -112,6 +150,7 @@ class FirestoreAdminRepository implements AbstractAdminRepository {
 
   @override
   Future<void> deleteCircle(String circleId) async {
+    _invalidateAdmin();
     final batch = _firestore.batch();
     batch.delete(_firestore.collection(FirestorePaths.circles).doc(circleId));
     final links = await _firestore
@@ -129,6 +168,7 @@ class FirestoreAdminRepository implements AbstractAdminRepository {
     required String circleId,
     required String studentId,
   }) {
+    _invalidateAdmin();
     final id = '${circleId}_$studentId';
     return _firestore.collection(FirestorePaths.circleStudents).doc(id).set({
       'circle_id': circleId,
@@ -142,6 +182,7 @@ class FirestoreAdminRepository implements AbstractAdminRepository {
     required String circleId,
     required String studentId,
   }) {
+    _invalidateAdmin();
     return _firestore
         .collection(FirestorePaths.circleStudents)
         .doc('${circleId}_$studentId')
@@ -150,26 +191,44 @@ class FirestoreAdminRepository implements AbstractAdminRepository {
 
   @override
   Future<List<InstituteUser>> circleStudents(String circleId) async {
-    final links = await _firestore
-        .collection(FirestorePaths.circleStudents)
-        .where('circle_id', isEqualTo: circleId)
-        .get();
-    final students = <InstituteUser>[];
-    for (final link in links.docs) {
-      final studentId = link.data()['student_id'] as String;
-      final snap = await _firestore
-          .collection(FirestorePaths.users)
-          .doc(studentId)
-          .get();
-      if (snap.data() != null) students.add(_userFromMap(snap.data()!));
+    final all = await allCircleMembers();
+    return all[circleId] ?? const [];
+  }
+
+  @override
+  Future<Map<String, List<InstituteUser>>> allCircleMembers() async {
+    const key = 'admin:members';
+    final cached = _cache.get<Map<String, List<InstituteUser>>>(key);
+    if (cached != null) return cached;
+    final links = await getQueryPreferCache(
+      _firestore.collection(FirestorePaths.circleStudents),
+    );
+    final ids = {
+      for (final doc in links.docs) doc.data()['student_id'] as String,
+    };
+    final users = await _usersByIds(ids);
+    final map = <String, List<InstituteUser>>{};
+    for (final doc in links.docs) {
+      final data = doc.data();
+      final student = users[data['student_id'] as String];
+      if (student == null) continue;
+      map.putIfAbsent(data['circle_id'] as String, () => []).add(student);
     }
-    students.sort((a, b) => a.name.compareTo(b.name));
-    return students;
+    for (final list in map.values) {
+      list.sort((a, b) => a.name.compareTo(b.name));
+    }
+    _cache.set(key, map);
+    return map;
   }
 
   @override
   Future<List<Map<String, Object?>>> statsSnapshot() async {
-    final points = await _firestore.collection(FirestorePaths.pointLedger).get();
+    const key = 'admin:stats';
+    final cached = _cache.get<List<Map<String, Object?>>>(key);
+    if (cached != null) return cached;
+    final points = await getQueryPreferCache(
+      _firestore.collection(FirestorePaths.pointLedger),
+    );
     final totals = <String, int>{};
     for (final doc in points.docs) {
       final data = doc.data();
@@ -177,37 +236,41 @@ class FirestoreAdminRepository implements AbstractAdminRepository {
       totals[studentId] =
           (totals[studentId] ?? 0) + (data['points'] as num).toInt();
     }
-    final rows = <Map<String, Object?>>[];
-    for (final entry in totals.entries) {
-      final user = await _firestore
-          .collection(FirestorePaths.users)
-          .doc(entry.key)
-          .get();
-      rows.add({
-        'student_id': entry.key,
-        'name': user.data()?['name'] ?? entry.key,
-        'points': entry.value,
-      });
-    }
+    final users = await _usersByIds(totals.keys);
+    final rows = [
+      for (final entry in totals.entries)
+        {
+          'student_id': entry.key,
+          'name': users[entry.key]?.name ?? entry.key,
+          'points': entry.value,
+        },
+    ];
     rows.sort(
       (a, b) => ((b['points'] as int).compareTo(a['points'] as int)),
     );
+    _cache.set(key, rows);
     return rows;
   }
 
   @override
   Future<List<StudentJoinRequest>> listPendingStudentRequests() async {
-    final snap = await _firestore
-        .collection(FirestorePaths.studentRequests)
-        .where('status', isEqualTo: StudentRequestStatus.pending.name)
-        .get();
+    const key = 'admin:pending';
+    final cached = _cache.get<List<StudentJoinRequest>>(key);
+    if (cached != null) return cached;
+    final snap = await getQueryPreferCache(
+      _firestore
+          .collection(FirestorePaths.studentRequests)
+          .where('status', isEqualTo: StudentRequestStatus.pending.name),
+    );
     final list = snap.docs.map((d) => _requestFromMap(d.data())).toList()
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    _cache.set(key, list);
     return list;
   }
 
   @override
   Future<void> approveStudentRequest(String requestId) async {
+    _invalidateAdmin();
     final ref = _firestore
         .collection(FirestorePaths.studentRequests)
         .doc(requestId);
@@ -251,10 +314,39 @@ class FirestoreAdminRepository implements AbstractAdminRepository {
 
   @override
   Future<void> rejectStudentRequest(String requestId) async {
+    _invalidateAdmin();
     await _firestore.collection(FirestorePaths.studentRequests).doc(requestId).update({
       'status': StudentRequestStatus.rejected.name,
       'updated_at': DateTime.now().toUtc().toIso8601String(),
     });
+  }
+
+  Future<Map<String, InstituteUser>> _usersByIds(Iterable<String> ids) async {
+    final unique = ids.where((id) => id.isNotEmpty).toSet().toList();
+    final found = <String, InstituteUser>{};
+    final missing = <String>[];
+    for (final id in unique) {
+      final hit = _cache.get<InstituteUser>('user:$id');
+      if (hit != null) {
+        found[id] = hit;
+      } else {
+        missing.add(id);
+      }
+    }
+    if (missing.isNotEmpty) {
+      final snaps = await Future.wait([
+        for (final id in missing)
+          _firestore.collection(FirestorePaths.users).doc(id).get(),
+      ]);
+      for (final snap in snaps) {
+        final data = snap.data();
+        if (data == null) continue;
+        final user = _userFromMap(data);
+        _cache.set('user:${user.id}', user);
+        found[user.id] = user;
+      }
+    }
+    return found;
   }
 
   StudentJoinRequest _requestFromMap(Map<String, dynamic> row) {
